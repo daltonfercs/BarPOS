@@ -1,10 +1,3 @@
-Aquí tienes un `README.md` profesional, claro y estructurado con insignias (badges), arquitectura, capturas/flujo y una guía paso a paso para que cualquier persona configure su propia hoja de cálculo en Google Drive y despliegue el backend sin complicaciones.
-
-Copia y pega este contenido en tu archivo `README.md`:
-
----
-
-```markdown
 # 🍻 BarPOS — Sistema Ágil de Pedidos y Cocina
 
 <p align="center">
@@ -23,7 +16,7 @@ Copia y pega este contenido en tu archivo `README.md`:
 
 - **📱 Toma Rápida de Pedidos**: Catálogo segmentado por categorías (Bebidas, Alitas, Salchipapas, etc.).
 - **💳 Múltiples Medios de Pago**: Registro de Efectivo, Yape o Mixto, indicando si es pedido en Mesa o Para Llevar.
-- **👨‍🍳 Vista de Cocina (KDS)**: Tablero de comandas pendientes en orden de llegada con cuenta regresiva estimada de 15 minutos por ticket.
+- **👨🍳 Vista de Cocina (KDS)**: Tablero de comandas pendientes en orden de llegada con cuenta regresiva estimada de 15 minutos por ticket.
 - **📊 Reportes Automáticos**: Agrupación instantánea de ventas del día por categoría (Bebida vs. Comida) y totales recaudados.
 - **☁️ Backend Serverless con Google Drive**: Registro directo en una hoja de cálculo mediante Google Apps Script.
 
@@ -164,70 +157,48 @@ function jsonResponse(obj) {
   return ContentService.createTextOutput(JSON.stringify(obj))
     .setMimeType(ContentService.MimeType.JSON);
 }
-
 ```
+### Paso 3: Despliegue de la API Web en Google Apps Script
+
+Para que la app Android pueda enviar y leer datos sin necesidad de autenticaciones complejas, la hoja debe publicarse como un servicio web accesible:
+
+1. **Abrir el asistente de despliegue**:
+   - En el menú superior del editor de Google Apps Script, haz clic en el botón azul **Implementar** y selecciona **Nueva implementación**.
+2. **Definir el tipo de servicio**:
+   - Pulsa en el engranaje (**Seleccionar tipo**) y escoge **Aplicación web**.
+3. **Completar los parámetros**:
+   - **Descripción**: `API BarPOS v1`
+   - **Ejecutar como**: `Yo (tu correo de Google)`
+   - **Quién tiene acceso**: `Cualquier usuario` *(Permite que las peticiones HTTP desde el móvil se procesen sin trabas)*.
+4. **Conceder autorizaciones**:
+   - Pulsa **Implementar**.
+   - Haz clic en **Revisar permisos** y selecciona tu cuenta de Google.
+   - En la pantalla de aviso de seguridad, pulsa en **Configuración avanzada** y luego en **Ir a Proyecto (no seguro)**.
+   - Presiona **Permitir**.
+5. **Guardar el endpoint**:
+   - Copia la **URL de la aplicación web** generada (termina en `/exec`). Esta dirección será tu `BASE_URL` en Kotlin.
 
 ---
 
-### Paso 3: Desplegar como Aplicación Web
+### Paso 4: Integración en la App Android (Jetpack Compose & Retrofit)
 
-1. En la parte superior derecha de Apps Script, pulsa **Implementar** > **Nueva implementación**.
-2. Haz clic en el ícono de engranaje (⚙️) y elige **Aplicación web**.
-3. Configura los siguientes campos:
-* **Descripción**: `API BarPOS`
-* **Ejecutar como**: `Yo (tu correo)`
-* **Quién tiene acceso**: **`Cualquier usuario`** *(Obligatorio para permitir peticiones desde la app móvil)*.
+Con el backend desplegado, se procede a enlazar el cliente HTTP en el código nativo:
 
+#### 1. Dependencias de red en `app/build.gradle.kts`
+Asegúrate de incluir Retrofit, el convertidor JSON y OkHttp con soporte para logging:
 
-4. Presiona **Implementar**, acepta los permisos de Google y copia la **URL de la aplicación web** (la que termina en `/exec`).
-
----
-
-## 📲 Configuración en la App Android
-
-1. Clona el repositorio:
-```bash
-git clone [https://github.com/TU_USUARIO/BarPOS.git](https://github.com/TU_USUARIO/BarPOS.git)
-
-```
-
-
-2. Abre el proyecto en **Android Studio**.
-3. Dirígete al archivo de configuración de red (por ejemplo `Constants.kt` o `local.properties`):
 ```kotlin
-const val BASE_URL = "[https://script.google.com/macros/s/TU_SCRIPT_ID/exec](https://script.google.com/macros/s/TU_SCRIPT_ID/exec)"
+dependencies {
+    // Red y serialización
+    implementation("com.squareup.retrofit2:retrofit:2.11.0")
+    implementation("com.squareup.retrofit2:converter-gson:2.11.0")
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation("com.squareup.okhttp3:logging-interceptor:4.12.0")
 
+    // Ciclo de vida y ViewModel en Compose
+    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.6")
+}
 ```
+📄 Licencia
 
-
-4. Compila y ejecuta el proyecto en tu emulador o dispositivo móvil.
-
----
-
-## 📂 Estructura del Proyecto
-
-```text
-app/src/main/java/com/barpos/
-├── data/
-│   ├── model/         # Modelos de datos (Order, Item, Category)
-│   ├── remote/        # API Service y Retrofit Client
-│   └── repository/    # Implementación del repositorio de órdenes
-├── domain/            # Casos de uso de negocio (cálculo de totales, filtros)
-├── ui/
-│   ├── catalog/       # Pantalla de toma de pedidos y selección de mesa
-│   ├── kitchen/       # Pantalla KDS para cocineros con temporizador
-│   ├── reports/       # Reportes del día clasificados por categoría
-│   └── theme/         # Temas de Jetpack Compose (Colores, Tipografía)
-└── MainActivity.kt    # Punto de entrada y navegación principal
-
-```
-
----
-
-## 📄 Licencia
-
-Este proyecto está bajo la Licencia **MIT**. Consulta el archivo [LICENSE](https://www.google.com/search?q=LICENSE) para más detalles.
-
-```
-
-```
+Este proyecto está bajo la Licencia MIT. 
