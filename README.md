@@ -1,3 +1,10 @@
+Aquí tienes un `README.md` profesional, claro y estructurado con insignias (badges), arquitectura, capturas/flujo y una guía paso a paso para que cualquier persona configure su propia hoja de cálculo en Google Drive y despliegue el backend sin complicaciones.
+
+Copia y pega este contenido en tu archivo `README.md`:
+
+---
+
+```markdown
 # 🍻 BarPOS — Sistema Ágil de Pedidos y Cocina
 
 <p align="center">
@@ -157,3 +164,70 @@ function jsonResponse(obj) {
   return ContentService.createTextOutput(JSON.stringify(obj))
     .setMimeType(ContentService.MimeType.JSON);
 }
+
+```
+
+---
+
+### Paso 3: Desplegar como Aplicación Web
+
+1. En la parte superior derecha de Apps Script, pulsa **Implementar** > **Nueva implementación**.
+2. Haz clic en el ícono de engranaje (⚙️) y elige **Aplicación web**.
+3. Configura los siguientes campos:
+* **Descripción**: `API BarPOS`
+* **Ejecutar como**: `Yo (tu correo)`
+* **Quién tiene acceso**: **`Cualquier usuario`** *(Obligatorio para permitir peticiones desde la app móvil)*.
+
+
+4. Presiona **Implementar**, acepta los permisos de Google y copia la **URL de la aplicación web** (la que termina en `/exec`).
+
+---
+
+## 📲 Configuración en la App Android
+
+1. Clona el repositorio:
+```bash
+git clone [https://github.com/TU_USUARIO/BarPOS.git](https://github.com/TU_USUARIO/BarPOS.git)
+
+```
+
+
+2. Abre el proyecto en **Android Studio**.
+3. Dirígete al archivo de configuración de red (por ejemplo `Constants.kt` o `local.properties`):
+```kotlin
+const val BASE_URL = "[https://script.google.com/macros/s/TU_SCRIPT_ID/exec](https://script.google.com/macros/s/TU_SCRIPT_ID/exec)"
+
+```
+
+
+4. Compila y ejecuta el proyecto en tu emulador o dispositivo móvil.
+
+---
+
+## 📂 Estructura del Proyecto
+
+```text
+app/src/main/java/com/barpos/
+├── data/
+│   ├── model/         # Modelos de datos (Order, Item, Category)
+│   ├── remote/        # API Service y Retrofit Client
+│   └── repository/    # Implementación del repositorio de órdenes
+├── domain/            # Casos de uso de negocio (cálculo de totales, filtros)
+├── ui/
+│   ├── catalog/       # Pantalla de toma de pedidos y selección de mesa
+│   ├── kitchen/       # Pantalla KDS para cocineros con temporizador
+│   ├── reports/       # Reportes del día clasificados por categoría
+│   └── theme/         # Temas de Jetpack Compose (Colores, Tipografía)
+└── MainActivity.kt    # Punto de entrada y navegación principal
+
+```
+
+---
+
+## 📄 Licencia
+
+Este proyecto está bajo la Licencia **MIT**. Consulta el archivo [LICENSE](https://www.google.com/search?q=LICENSE) para más detalles.
+
+```
+
+```
