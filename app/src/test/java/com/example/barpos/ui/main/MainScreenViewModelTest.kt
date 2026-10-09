@@ -1,27 +1,22 @@
-package com.example.barpos.ui.main
+package com.example.barpos.ui.catalog
 
-import com.example.barpos.data.DataRepository
 import junit.framework.TestCase.assertEquals
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.test.runTest
 import org.junit.Test
 
-class MainScreenViewModelTest {
+class CatalogViewModelTest {
   @Test
-  fun uiState_initiallyLoading() = runTest {
-    val viewModel = MainScreenViewModel(FakeMyModelRepository())
-    assertEquals(viewModel.uiState.first(), MainScreenUiState.Loading)
+  fun catalogViewModel_initialState_hasProducts() = runTest {
+    val viewModel = CatalogViewModel()
+    val state = viewModel.uiState.value
+    assertEquals("Bebidas", state.categoriaSeleccionada)
+    assertEquals(5, state.productos.size)
   }
 
   @Test
-  fun uiState_onItemSaved_isDisplayed() = runTest {
-    val viewModel = MainScreenViewModel(FakeMyModelRepository())
-    assertEquals(viewModel.uiState.first(), MainScreenUiState.Loading)
+  fun catalogViewModel_setCategoria_updatesSelection() = runTest {
+    val viewModel = CatalogViewModel()
+    viewModel.setCategoria("Comidas")
+    assertEquals("Comidas", viewModel.uiState.value.categoriaSeleccionada)
   }
-}
-
-private class FakeMyModelRepository : DataRepository {
-  override val data: Flow<List<String>> = flow { emit(listOf("Sample")) }
 }

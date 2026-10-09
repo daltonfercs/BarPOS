@@ -1,4 +1,4 @@
-package com.example.barpos.ui.main
+package com.example.barpos.ui.roles
 
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
@@ -7,20 +7,27 @@ import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 
-/** UI tests for [com.example.barpos.ui.main.MainScreen]. */
-class MainScreenTest {
+/** UI tests for [RoleSelectionScreen]. */
+class RoleSelectionTest {
 
   @get:Rule val composeTestRule = createAndroidComposeRule<ComponentActivity>()
 
   @Before
   fun setup() {
-    composeTestRule.setContent { MainScreen(FAKE_DATA) }
+    composeTestRule.setContent {
+      RoleSelectionScreen(
+        onNavigateToCatalog = {},
+        onNavigateToKitchen = {},
+        onNavigateToReports = {}
+      )
+    }
   }
 
   @Test
-  fun firstItem_exists() {
-    FAKE_DATA.forEach { composeTestRule.onNodeWithText("Hello $it!").assertExists() }
+  fun roleSelectionScreen_showsTitleAndButtons() {
+    composeTestRule.onNodeWithText("BarPOS").assertExists()
+    composeTestRule.onNodeWithText("Caja / Mesero (Salón)").assertExists()
+    composeTestRule.onNodeWithText("Cocina (KDS)").assertExists()
+    composeTestRule.onNodeWithText("Administrador (Reportes)").assertExists()
   }
 }
-
-private val FAKE_DATA = listOf("Sample1", "Sample2", "Sample3")
