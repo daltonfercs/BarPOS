@@ -7,10 +7,10 @@ plugins {
 }
 
 android {
-    namespace = "com.example.barpos"
+    namespace = "com.daltonfercs.barpos"
     compileSdk = 36
     defaultConfig {
-        applicationId = "com.example.barpos"
+        applicationId = "com.daltonfercs.barpos"
         minSdk = 24
         targetSdk = 36
         versionCode = 1
@@ -63,6 +63,8 @@ dependencies {
   implementation(libs.androidx.compose.ui)
   implementation(libs.androidx.compose.ui.tooling.preview)
   implementation(libs.androidx.compose.material3)
+  implementation(libs.androidx.compose.material.icons.core)
+  implementation(libs.androidx.compose.material.icons.extended)
   // Tooling
   debugImplementation(libs.androidx.compose.ui.tooling)
   // Instrumented tests
@@ -87,6 +89,9 @@ dependencies {
   // Retrofit & Gson
   implementation(libs.retrofit)
   implementation(libs.retrofit.converter.gson)
+  implementation(libs.androidx.room.runtime)
+  implementation(libs.androidx.room.ktx)
   implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.0")
   implementation("androidx.navigation:navigation-compose:2.7.7")
+  implementation("com.squareup.okhttp3:logging-interceptor:4.12.0")
 }
