@@ -200,6 +200,9 @@ interface BarPosDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     fun insertProducto(producto: ProductoEntity)
 
+    @Query("DELETE FROM productos WHERE id_key = :idKey OR id = :idKey")
+    fun deleteProductoById(idKey: String)
+
     @Query("SELECT * FROM mesas ORDER BY numero ASC")
     fun getAllMesas(): List<MesaEntity>
 
@@ -208,6 +211,9 @@ interface BarPosDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     fun insertMesa(mesa: MesaEntity)
+
+    @Query("DELETE FROM mesas WHERE id_mesa = :idMesa")
+    fun deleteMesaById(idMesa: String)
 
     @Query("SELECT * FROM pedidos")
     fun getAllPedidos(): List<PedidoItemEntity>
@@ -343,6 +349,7 @@ private class RoomSqliteDatabaseImpl(
         val db = helper.writableDatabase
         db.beginTransaction()
         try {
+            db.delete("productos", null, null)
             for (p in productos) {
                 db.insertWithOnConflict("productos", null, p.toContentValues(), SQLiteDatabase.CONFLICT_REPLACE)
             }
@@ -356,6 +363,12 @@ private class RoomSqliteDatabaseImpl(
     override fun insertProducto(producto: ProductoEntity) {
         val db = helper.writableDatabase
         db.insertWithOnConflict("productos", null, producto.toContentValues(), SQLiteDatabase.CONFLICT_REPLACE)
+    }
+
+    @Synchronized
+    override fun deleteProductoById(idKey: String) {
+        val db = helper.writableDatabase
+        db.delete("productos", "id_key = ? OR id = ?", arrayOf(idKey, idKey))
     }
 
     @Synchronized
@@ -383,6 +396,7 @@ private class RoomSqliteDatabaseImpl(
         val db = helper.writableDatabase
         db.beginTransaction()
         try {
+            db.delete("mesas", null, null)
             for (m in mesas) {
                 db.insertWithOnConflict("mesas", null, m.toContentValues(), SQLiteDatabase.CONFLICT_REPLACE)
             }
@@ -396,6 +410,12 @@ private class RoomSqliteDatabaseImpl(
     override fun insertMesa(mesa: MesaEntity) {
         val db = helper.writableDatabase
         db.insertWithOnConflict("mesas", null, mesa.toContentValues(), SQLiteDatabase.CONFLICT_REPLACE)
+    }
+
+    @Synchronized
+    override fun deleteMesaById(idMesa: String) {
+        val db = helper.writableDatabase
+        db.delete("mesas", "id_mesa = ?", arrayOf(idMesa))
     }
 
     @Synchronized

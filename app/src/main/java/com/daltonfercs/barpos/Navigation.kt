@@ -14,6 +14,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.NavHost
@@ -98,7 +99,15 @@ fun MainNavigation() {
                                 }
                             }
                         },
-                        label = { Text(screen.title) },
+                        label = {
+                            Text(
+                                text = screen.title,
+                                maxLines = 1,
+                                softWrap = false,
+                                overflow = TextOverflow.Ellipsis,
+                                style = MaterialTheme.typography.labelSmall
+                            )
+                        },
                         selected = isSelected,
                         onClick = {
                             if (currentRoute != screen.route) {

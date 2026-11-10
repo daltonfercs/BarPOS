@@ -3,7 +3,9 @@ package com.daltonfercs.barpos.ui.home
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -14,10 +16,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.daltonfercs.barpos.data.BarRepository
 import com.daltonfercs.barpos.ui.theme.BarPOSTheme
+import com.daltonfercs.barpos.ui.theme.SuccessGreen
+import com.daltonfercs.barpos.ui.theme.WarningRed
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -38,19 +44,34 @@ fun HomeScreen(
 
     val tables by BarRepository.tables.collectAsState()
     val orders by BarRepository.orders.collectAsState()
+    val products by BarRepository.products.collectAsState()
 
     val libres = tables.count { it.estado == "Libre" }
     val ocupadas = tables.count { it.estado == "Ocupada" }
     val pendientesCocina = orders.filter { it.estadoCocina == "Pendiente" }.map { it.idPedido }.distinct().size
     val pendientesCobro = orders.filter { it.estadoPago == "Pendiente" && it.idPedido.isNotBlank() }.map { it.idPedido }.distinct().size
+    val productosDisponibles = products.count { it.disponible && it.stock > 0 }
+    val productosAgotados = products.count { !it.disponible || it.stock <= 0 }
 
     Scaffold(
         topBar = {
             TopAppBar(
                 title = {
                     Column {
-                        Text("BarPOS — Gestión Rápida", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                        Text(today, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(
+                            "BarPOS — Gestión Rápida",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            today,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
                     }
                 },
                 actions = {
@@ -121,10 +142,11 @@ fun HomeScreen(
             }
             item {
                 HeroCard(
-                    title = "Gestión Productos",
-                    subtitle = "Stock, Menú y Precios",
-                    icon = Icons.Filled.Menu,
+                    title = "Productos",
+                    subtitle = "${products.size} ítems ($productosDisponibles disp.)",
+                    icon = Icons.Filled.Inventory2,
                     color = Color(0xFF2196F3),
+                    badgeCount = productosAgotados,
                     onClick = onNavigateToProducts
                 )
             }
@@ -137,14 +159,49 @@ fun HomeScreen(
                     onClick = onNavigateToReports
                 )
             }
-            item {
-                HeroCard(
-                    title = "Acerca de",
-                    subtitle = "Dalton CELADITA • Info",
-                    icon = Icons.Filled.Info,
-                    color = Color(0xFF3F51B5),
-                    onClick = onNavigateToAbout
-                )
+            item(span = { GridItemSpan(2) }) {
+                Card(
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onNavigateToAbout() }
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 14.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Filled.Info,
+                                contentDescription = "Acerca de",
+                                tint = Color(0xFF3F51B5),
+                                modifier = Modifier.size(32.dp)
+                            )
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column {
+                                Text(
+                                    text = "Acerca de BarPOS",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    text = "Desarrollador: Dalton CELADITA • DALTONFERCS.DEV@GMAIL.COM",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                        Icon(
+                            imageVector = Icons.Filled.ChevronRight,
+                            contentDescription = "Ver más",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
             }
         }
     }
@@ -164,18 +221,18 @@ fun HeroCard(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
         modifier = Modifier
             .fillMaxWidth()
-            .aspectRatio(1f)
+            .heightIn(min = 138.dp)
             .clickable { onClick() }
     ) {
         Column(
             modifier = Modifier
-                .fillMaxSize()
-                .padding(16.dp),
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 14.dp),
             verticalArrangement = Arrangement.Center,
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Box {
-                Icon(icon, contentDescription = title, modifier = Modifier.size(44.dp), tint = color)
+                Icon(icon, contentDescription = title, modifier = Modifier.size(40.dp), tint = color)
                 if (badgeCount > 0) {
                     Badge(
                         containerColor = MaterialTheme.colorScheme.error,
@@ -185,10 +242,25 @@ fun HeroCard(
                     }
                 }
             }
-            Spacer(modifier = Modifier.height(14.dp))
-            Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+            Spacer(modifier = Modifier.height(10.dp))
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface,
+                textAlign = TextAlign.Center,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
             Spacer(modifier = Modifier.height(4.dp))
-            Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(
+                text = subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
         }
     }
 }

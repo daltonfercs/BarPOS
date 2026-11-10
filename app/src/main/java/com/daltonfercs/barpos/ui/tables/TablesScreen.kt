@@ -1,14 +1,22 @@
 package com.daltonfercs.barpos.ui.tables
 
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -69,7 +77,17 @@ class TablesViewModel : ViewModel() {
 
     fun createTable(numero: Int, capacidad: Int) {
         BarRepository.addTable(numero, capacidad)
-        _feedbackMessage.value = "Mesa $numero registrada con éxito."
+        _feedbackMessage.value = "✅ Mesa $numero registrada con éxito."
+    }
+
+    fun updateTable(idMesa: String, numero: Int, capacidad: Int) {
+        BarRepository.updateTable(idMesa, numero, capacidad)
+        _feedbackMessage.value = "✏️ Mesa $numero actualizada con éxito."
+    }
+
+    fun deleteTable(mesa: TableModel) {
+        BarRepository.deleteTable(mesa.idMesa)
+        _feedbackMessage.value = "🗑️ Mesa ${mesa.numero} eliminada."
     }
 
     fun refreshMesas() {
@@ -97,8 +115,10 @@ fun TablesScreen(
     var showBottomSheet by remember { mutableStateOf(false) }
     var activeTable by remember { mutableStateOf<TableModel?>(null) }
     var showCreateTableDialog by remember { mutableStateOf(false) }
+    var tableToEdit by remember { mutableStateOf<TableModel?>(null) }
+    var tableToDelete by remember { mutableStateOf<TableModel?>(null) }
 
-    val sheetState = rememberModalBottomSheetState()
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
 
@@ -124,7 +144,10 @@ fun TablesScreen(
         },
         floatingActionButton = {
             FloatingActionButton(
-                onClick = { showCreateTableDialog = true },
+                onClick = {
+                    tableToEdit = null
+                    showCreateTableDialog = true
+                },
                 containerColor = MaterialTheme.colorScheme.primary
             ) {
                 Icon(Icons.Filled.Add, contentDescription = "Nueva Mesa", tint = Color.White)
@@ -133,14 +156,14 @@ fun TablesScreen(
     ) { innerPadding ->
         LazyVerticalGrid(
             columns = GridCells.Fixed(3),
-            contentPadding = PaddingValues(16.dp),
-            horizontalArrangement = Arrangement.spacedBy(16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
+            contentPadding = PaddingValues(14.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
         ) {
-            items(mesas) { mesa ->
+            items(mesas, key = { it.idMesa }) { mesa ->
                 TableCard(
                     mesa = mesa,
                     onClick = {
@@ -152,6 +175,13 @@ fun TablesScreen(
                             // Si está libre, abrir comanda directamente
                             onTableSelected(mesa)
                         }
+                    },
+                    onEditClick = {
+                        tableToEdit = mesa
+                        showCreateTableDialog = true
+                    },
+                    onDeleteClick = {
+                        tableToDelete = mesa
                     }
                 )
             }
@@ -185,10 +215,47 @@ fun TablesScreen(
 
         if (showCreateTableDialog) {
             CreateTableDialog(
-                onDismiss = { showCreateTableDialog = false },
-                onConfirm = { num, cap ->
-                    viewModel.createTable(num, cap)
+                initialTable = tableToEdit,
+                onDismiss = {
                     showCreateTableDialog = false
+                    tableToEdit = null
+                },
+                onConfirm = { num, cap ->
+                    val editing = tableToEdit
+                    if (editing != null) {
+                        viewModel.updateTable(editing.idMesa, num, cap)
+                    } else {
+                        viewModel.createTable(num, cap)
+                    }
+                    showCreateTableDialog = false
+                    tableToEdit = null
+                }
+            )
+        }
+
+        if (tableToDelete != null) {
+            val targetMesa = tableToDelete!!
+            AlertDialog(
+                onDismissRequest = { tableToDelete = null },
+                title = { Text("Eliminar Mesa ${targetMesa.numero}", fontWeight = FontWeight.Bold) },
+                text = {
+                    Text("¿Estás seguro de que deseas eliminar la Mesa ${targetMesa.numero} (${targetMesa.idMesa})? Esta acción se sincronizará con el sistema.")
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            viewModel.deleteTable(targetMesa)
+                            tableToDelete = null
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                    ) {
+                        Text("Eliminar", color = Color.White, fontWeight = FontWeight.Bold)
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { tableToDelete = null }) {
+                        Text("Cancelar")
+                    }
                 }
             )
         }
@@ -196,13 +263,23 @@ fun TablesScreen(
 }
 
 @Composable
-fun CreateTableDialog(onDismiss: () -> Unit, onConfirm: (Int, Int) -> Unit) {
-    var numero by remember { mutableStateOf("") }
-    var capacidad by remember { mutableStateOf("") }
+fun CreateTableDialog(
+    initialTable: TableModel? = null,
+    onDismiss: () -> Unit,
+    onConfirm: (Int, Int) -> Unit
+) {
+    val isEditing = initialTable != null
+    var numero by remember(initialTable) { mutableStateOf(initialTable?.numero?.toString() ?: "") }
+    var capacidad by remember(initialTable) { mutableStateOf(initialTable?.capacidad?.toString() ?: "") }
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Registrar Nueva Mesa", fontWeight = FontWeight.Bold) },
+        title = {
+            Text(
+                text = if (isEditing) "Editar Mesa ${initialTable?.numero}" else "Registrar Nueva Mesa",
+                fontWeight = FontWeight.Bold
+            )
+        },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 OutlinedTextField(
@@ -228,7 +305,7 @@ fun CreateTableDialog(onDismiss: () -> Unit, onConfirm: (Int, Int) -> Unit) {
                     val c = capacidad.toIntOrNull() ?: 0
                     if (n > 0 && c > 0) onConfirm(n, c)
                 }
-            ) { Text("Guardar") }
+            ) { Text(if (isEditing) "Actualizar" else "Guardar") }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) { Text("Cancelar") }
@@ -236,56 +313,148 @@ fun CreateTableDialog(onDismiss: () -> Unit, onConfirm: (Int, Int) -> Unit) {
     )
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun TableCard(mesa: TableModel, onClick: () -> Unit) {
-    val isOcupada = mesa.estado == "Ocupada"
-    val containerColor = if (isOcupada) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.surface
-    val badgeColor = if (isOcupada) WarningRed else SuccessGreen
+fun TableCard(
+    mesa: TableModel,
+    onClick: () -> Unit,
+    onEditClick: () -> Unit = {},
+    onDeleteClick: () -> Unit = {}
+) {
+    val isOcupada = mesa.estado.equals("Ocupada", ignoreCase = true)
+    val statusColor = if (isOcupada) WarningRed else SuccessGreen
+    val containerColor = if (isOcupada) {
+        WarningRed.copy(alpha = 0.10f)
+    } else {
+        SuccessGreen.copy(alpha = 0.08f)
+    }
+
+    var showMenu by remember { mutableStateOf(false) }
 
     Card(
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = containerColor),
+        border = BorderStroke(1.dp, statusColor.copy(alpha = 0.35f)),
         modifier = Modifier
             .fillMaxWidth()
-            .aspectRatio(1f)
-            .clickable { onClick() }
+            .heightIn(min = 128.dp)
+            .combinedClickable(
+                onClick = onClick,
+                onLongClick = { showMenu = true }
+            )
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(12.dp),
-            verticalArrangement = Arrangement.Center,
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Text(
-                "Mesa",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Text(
-                "${mesa.numero}",
-                style = MaterialTheme.typography.displaySmall,
-                color = MaterialTheme.colorScheme.onSurface,
-                fontWeight = FontWeight.Bold
-            )
-            Text(
-                "${mesa.capacidad} pers.",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Spacer(modifier = Modifier.height(4.dp))
-            Surface(
-                color = badgeColor,
-                shape = RoundedCornerShape(6.dp),
-                modifier = Modifier.padding(top = 2.dp)
+        Box(modifier = Modifier.fillMaxWidth()) {
+            // Franja vertical en el borde izquierdo indicando el estado (Verde = Libre, Rojo = Ocupada)
+            Box(
+                modifier = Modifier
+                    .matchParentSize()
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxHeight()
+                        .width(8.dp)
+                        .background(statusColor)
+                        .align(Alignment.CenterStart)
+                )
+            }
+
+            // Botón de menú (⋮) en la esquina superior derecha + DropdownMenu
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(top = 2.dp, end = 2.dp)
+            ) {
+                IconButton(
+                    onClick = { showMenu = true },
+                    modifier = Modifier.size(28.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.MoreVert,
+                        contentDescription = "Opciones de Mesa",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+
+                DropdownMenu(
+                    expanded = showMenu,
+                    onDismissRequest = { showMenu = false }
+                ) {
+                    DropdownMenuItem(
+                        text = { Text("Editar Mesa") },
+                        leadingIcon = {
+                            Icon(
+                                imageVector = Icons.Filled.Edit,
+                                contentDescription = "Editar",
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                        },
+                        onClick = {
+                            showMenu = false
+                            onEditClick()
+                        }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Eliminar Mesa", color = MaterialTheme.colorScheme.error) },
+                        leadingIcon = {
+                            Icon(
+                                imageVector = Icons.Filled.Delete,
+                                contentDescription = "Eliminar",
+                                tint = MaterialTheme.colorScheme.error
+                            )
+                        },
+                        onClick = {
+                            showMenu = false
+                            onDeleteClick()
+                        }
+                    )
+                }
+            }
+
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 12.dp, end = 6.dp, top = 10.dp, bottom = 10.dp),
+                verticalArrangement = Arrangement.Center,
+                horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Text(
-                    text = mesa.estado,
-                    color = Color.White,
-                    style = MaterialTheme.typography.labelSmall,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                    "Mesa",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    softWrap = false
                 )
+                Text(
+                    "${mesa.numero}",
+                    style = MaterialTheme.typography.headlineSmall,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    softWrap = false
+                )
+                Text(
+                    "${mesa.capacidad} pers.",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    softWrap = false
+                )
+                Spacer(modifier = Modifier.height(6.dp))
+                Surface(
+                    color = statusColor,
+                    shape = RoundedCornerShape(6.dp)
+                ) {
+                    Text(
+                        text = mesa.estado,
+                        color = Color.White,
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        softWrap = false,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                    )
+                }
             }
         }
     }
@@ -312,7 +481,10 @@ fun TableBillSheet(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(24.dp)
+            .verticalScroll(rememberScrollState())
+            .imePadding()
+            .navigationBarsPadding()
+            .padding(horizontal = 24.dp, vertical = 16.dp)
     ) {
         Text(
             "Cuenta Acumulada - Mesa ${mesa.numero}",
@@ -324,7 +496,7 @@ fun TableBillSheet(
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(14.dp))
 
         if (isLoading) {
             Box(modifier = Modifier.fillMaxWidth().height(100.dp), contentAlignment = Alignment.Center) {
@@ -343,81 +515,96 @@ fun TableBillSheet(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Text("${item.cantidad}x ${item.producto} (${item.categoria})", style = MaterialTheme.typography.bodyMedium)
-                        Text("S/ ${"%.2f".format(item.totalItem)}", fontWeight = FontWeight.SemiBold)
+                        Text(
+                            "${item.cantidad}x ${item.producto} (${item.categoria})",
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.weight(1f).padding(end = 8.dp)
+                        )
+                        Text(
+                            "S/ ${"%.2f".format(item.totalItem)}",
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                            softWrap = false
+                        )
                     }
                 }
             }
         }
 
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(14.dp))
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(14.dp))
 
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text("Total Acumulado:", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            Text("Total Acumulado:", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             Text(
                 "S/ ${"%.2f".format(total)}",
                 style = MaterialTheme.typography.headlineMedium,
                 fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.primary
+                color = MaterialTheme.colorScheme.primary,
+                maxLines = 1,
+                softWrap = false
             )
         }
 
-        Spacer(modifier = Modifier.height(24.dp))
+        Spacer(modifier = Modifier.height(18.dp))
 
         if (modoMixto) {
             Text("Desglose de Pago Mixto", fontWeight = FontWeight.Bold)
             Spacer(modifier = Modifier.height(8.dp))
-            OutlinedTextField(
-                value = efectivoInput,
-                onValueChange = { newVal ->
-                    efectivoInput = newVal
-                    val ef = newVal.replace(",", ".").toDoubleOrNull()
-                    if (ef != null && ef <= total && ef >= 0.0) {
-                        yapeInput = "%.2f".format(java.util.Locale.US, (total - ef).coerceAtLeast(0.0))
-                    }
-                },
-                label = { Text("Monto en Efectivo (S/)") },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+            Row(
                 modifier = Modifier.fillMaxWidth(),
-                singleLine = true,
-                isError = montoEfectivo > total || montoEfectivo < 0.0
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-            OutlinedTextField(
-                value = yapeInput,
-                onValueChange = { newVal ->
-                    yapeInput = newVal
-                    val yp = newVal.replace(",", ".").toDoubleOrNull()
-                    if (yp != null && yp <= total && yp >= 0.0) {
-                        efectivoInput = "%.2f".format(java.util.Locale.US, (total - yp).coerceAtLeast(0.0))
-                    }
-                },
-                label = { Text("Monto en Yape (S/)") },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true,
-                isError = montoYape > total || montoYape < 0.0
-            )
-            Spacer(modifier = Modifier.height(16.dp))
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                OutlinedTextField(
+                    value = efectivoInput,
+                    onValueChange = { newVal ->
+                        efectivoInput = newVal
+                        val ef = newVal.replace(",", ".").toDoubleOrNull()
+                        if (ef != null && ef <= total && ef >= 0.0) {
+                            yapeInput = "%.2f".format(java.util.Locale.US, (total - ef).coerceAtLeast(0.0))
+                        }
+                    },
+                    label = { Text("Efectivo (S/)") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    modifier = Modifier.weight(1f),
+                    singleLine = true,
+                    isError = montoEfectivo > total || montoEfectivo < 0.0
+                )
+                OutlinedTextField(
+                    value = yapeInput,
+                    onValueChange = { newVal ->
+                        yapeInput = newVal
+                        val yp = newVal.replace(",", ".").toDoubleOrNull()
+                        if (yp != null && yp <= total && yp >= 0.0) {
+                            efectivoInput = "%.2f".format(java.util.Locale.US, (total - yp).coerceAtLeast(0.0))
+                        }
+                    },
+                    label = { Text("Yape (S/)") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    modifier = Modifier.weight(1f),
+                    singleLine = true,
+                    isError = montoYape > total || montoYape < 0.0
+                )
+            }
+            Spacer(modifier = Modifier.height(14.dp))
 
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 OutlinedButton(
                     onClick = { modoMixto = false },
                     modifier = Modifier.weight(1f)
-                ) { Text("Atrás") }
+                ) { Text("Atrás", maxLines = 1, softWrap = false) }
 
                 Button(
                     onClick = { onPay("Mixto", montoEfectivo, montoYape) },
                     modifier = Modifier.weight(1f),
                     enabled = isMixtoValid && total > 0,
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
-                ) { Text("Confirmar") }
+                ) { Text("Confirmar", maxLines = 1, softWrap = false) }
             }
         } else if (modoCobro) {
             Text("Seleccione Método de Pago", fontWeight = FontWeight.Bold)
@@ -427,15 +614,17 @@ fun TableBillSheet(
                     onClick = { onPay("Efectivo", total, 0.0) },
                     modifier = Modifier.weight(1f),
                     enabled = total > 0,
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 10.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
-                ) { Text("Efectivo") }
+                ) { Text("Efectivo", maxLines = 1, softWrap = false) }
 
                 Button(
                     onClick = { onPay("Yape", 0.0, total) },
                     modifier = Modifier.weight(1f),
                     enabled = total > 0,
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 10.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
-                ) { Text("Yape") }
+                ) { Text("Yape", maxLines = 1, softWrap = false) }
 
                 Button(
                     onClick = {
@@ -446,8 +635,9 @@ fun TableBillSheet(
                     },
                     modifier = Modifier.weight(1f),
                     enabled = total > 0,
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 10.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
-                ) { Text("Mixto") }
+                ) { Text("Mixto", maxLines = 1, softWrap = false) }
             }
             Spacer(modifier = Modifier.height(8.dp))
             TextButton(
@@ -459,19 +649,21 @@ fun TableBillSheet(
                 OutlinedButton(
                     onClick = { onAddProducts() },
                     modifier = Modifier.weight(1f),
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp),
                     shape = RoundedCornerShape(12.dp)
-                ) { Text("➕ Agregar Más") }
+                ) { Text("➕ Agregar Más", maxLines = 1, softWrap = false) }
 
                 Button(
                     onClick = { modoCobro = true },
                     modifier = Modifier.weight(1f),
                     enabled = total > 0,
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp),
                     shape = RoundedCornerShape(12.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
-                ) { Text("💳 Cobrar Cuenta") }
+                ) { Text("💳 Cobrar Cuenta", maxLines = 1, softWrap = false) }
             }
         }
-        Spacer(modifier = Modifier.height(24.dp))
+        Spacer(modifier = Modifier.height(16.dp))
     }
 }
 

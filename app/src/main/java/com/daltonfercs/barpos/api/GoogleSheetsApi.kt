@@ -52,7 +52,19 @@ interface GoogleSheetsApi {
     suspend fun createProduct(@Body request: CreateProductRequest): Response<ResponseBody>
 
     @POST("exec")
+    suspend fun updateProduct(@Body request: UpdateProductRequest): Response<ResponseBody>
+
+    @POST("exec")
+    suspend fun deleteProduct(@Body request: DeleteProductRequest): Response<ResponseBody>
+
+    @POST("exec")
     suspend fun createTable(@Body request: CreateTableRequest): Response<ResponseBody>
+
+    @POST("exec")
+    suspend fun updateTable(@Body request: UpdateTableRequest): Response<ResponseBody>
+
+    @POST("exec")
+    suspend fun deleteTable(@Body request: DeleteTableRequest): Response<ResponseBody>
 }
 
 typealias BarApiService = GoogleSheetsApi

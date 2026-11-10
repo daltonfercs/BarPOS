@@ -351,7 +351,9 @@ fun AboutScreen(
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Text("Pedidos registrados en Room:", style = MaterialTheme.typography.bodyMedium)
-                        Text("$totalPedidosUnicos pedidos (${orders.size} registros)", fontWeight = FontWeight.Bold)
+                        Text("$totalPedidosUnicos pedidos \n" +
+                                "(${orders.size} registros)", fontWeight = FontWeight.Bold)
+
                     }
                 }
             }

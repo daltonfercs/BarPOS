@@ -1,5 +1,13 @@
 package com.daltonfercs.barpos.ui.reports
 
+import android.content.ContentValues
+import android.content.Context
+import android.graphics.Paint
+import android.graphics.Typeface
+import android.graphics.pdf.PdfDocument
+import android.os.Build
+import android.os.Environment
+import android.provider.MediaStore
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -14,7 +22,9 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
@@ -29,6 +39,10 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.File
+import java.io.FileOutputStream
+import java.io.OutputStream
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
@@ -146,8 +160,12 @@ fun ReportsScreen(viewModel: ReportsViewModel = androidx.lifecycle.viewmodel.com
     val state by viewModel.uiState.collectAsState()
     val hoy = BarRepository.getTodayString()
     var showDatePicker by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val snackbarHostState = remember { SnackbarHostState() }
 
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
                 title = { Text("Cierre de Caja & Reportes", fontWeight = FontWeight.Bold) },
@@ -206,6 +224,70 @@ fun ReportsScreen(viewModel: ReportsViewModel = androidx.lifecycle.viewmodel.com
                 }
             }
 
+            // Botones de Exportación (PDF y CSV)
+            item {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Button(
+                        onClick = {
+                            scope.launch {
+                                val fileName = withContext(Dispatchers.IO) {
+                                    exportReportToPdf(context, state)
+                                }
+                                if (fileName != null) {
+                                    snackbarHostState.showSnackbar("📄 PDF guardado en Descargas: $fileName")
+                                } else {
+                                    snackbarHostState.showSnackbar("❌ Error al generar el archivo PDF")
+                                }
+                            }
+                        },
+                        modifier = Modifier.weight(1f),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 12.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+                    ) {
+                        Text(
+                            text = "📄 Descargar PDF",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = Color.White,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            softWrap = false,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+
+                    OutlinedButton(
+                        onClick = {
+                            scope.launch {
+                                val fileName = withContext(Dispatchers.IO) {
+                                    exportReportToCsv(context, state)
+                                }
+                                if (fileName != null) {
+                                    snackbarHostState.showSnackbar("📊 CSV guardado en Descargas: $fileName")
+                                } else {
+                                    snackbarHostState.showSnackbar("❌ Error al generar el archivo CSV")
+                                }
+                            }
+                        },
+                        modifier = Modifier.weight(1f),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 12.dp),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Text(
+                            text = "📊 Descargar CSV",
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            softWrap = false,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+            }
+
             if (state.isLoading) {
                 item {
                     Box(modifier = Modifier.fillMaxWidth().height(150.dp), contentAlignment = Alignment.Center) {
@@ -226,19 +308,25 @@ fun ReportsScreen(viewModel: ReportsViewModel = androidx.lifecycle.viewmodel.com
                 // 2 & 3. Desglose Yape vs Efectivo
                 item {
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(IntrinsicSize.Max),
                         horizontalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
                         ReportCard(
                             title = "📱 Total Yape / Digital",
                             amount = state.totalYape,
-                            modifier = Modifier.weight(1f),
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxHeight(),
                             cardColor = MaterialTheme.colorScheme.secondaryContainer
                         )
                         ReportCard(
                             title = "🪙 Total en Efectivo (Caja)",
                             amount = state.totalEfectivo,
-                            modifier = Modifier.weight(1f),
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxHeight(),
                             cardColor = MaterialTheme.colorScheme.tertiaryContainer
                         )
                     }
@@ -247,20 +335,26 @@ fun ReportsScreen(viewModel: ReportsViewModel = androidx.lifecycle.viewmodel.com
                 // 4 & 5. Total Comida vs Bebidas
                 item {
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(IntrinsicSize.Max),
                         horizontalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
                         ReportCard(
                             title = "🍽️ Comida Vendida",
                             amount = state.totalComida,
                             subtitle = "${state.cantidadComida} platos servidos",
-                            modifier = Modifier.weight(1f)
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxHeight()
                         )
                         ReportCard(
                             title = "🍻 Bebidas Vendidas",
                             amount = state.totalBebida,
                             subtitle = "${state.cantidadBebida} unidades",
-                            modifier = Modifier.weight(1f)
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxHeight()
                         )
                     }
                 }
@@ -279,13 +373,18 @@ fun ReportsScreen(viewModel: ReportsViewModel = androidx.lifecycle.viewmodel.com
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Column {
+                            Column(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .padding(end = 12.dp)
+                            ) {
                                 Text(
                                     "⚠️ Total Pendiente de Cobro",
                                     style = MaterialTheme.typography.titleMedium,
                                     fontWeight = FontWeight.Bold,
                                     color = MaterialTheme.colorScheme.error
                                 )
+                                Spacer(modifier = Modifier.height(2.dp))
                                 Text(
                                     "Mesas abiertas o comandas sin pagar en esta fecha",
                                     style = MaterialTheme.typography.bodySmall,
@@ -293,10 +392,12 @@ fun ReportsScreen(viewModel: ReportsViewModel = androidx.lifecycle.viewmodel.com
                                 )
                             }
                             Text(
-                                "S/ ${"%.2f".format(state.totalPendiente)}",
-                                style = MaterialTheme.typography.titleLarge,
+                                text = "S/ ${"%.2f".format(state.totalPendiente)}",
+                                style = MaterialTheme.typography.headlineSmall,
                                 fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.error
+                                color = MaterialTheme.colorScheme.error,
+                                maxLines = 1,
+                                softWrap = false
                             )
                         }
                     }
@@ -326,7 +427,11 @@ fun ReportsScreen(viewModel: ReportsViewModel = androidx.lifecycle.viewmodel.com
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Column {
+                                Column(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .padding(end = 8.dp)
+                                ) {
                                     Text(
                                         "${pedido.cantidad}x ${pedido.producto}",
                                         style = MaterialTheme.typography.bodyMedium,
@@ -342,7 +447,9 @@ fun ReportsScreen(viewModel: ReportsViewModel = androidx.lifecycle.viewmodel.com
                                     Text(
                                         "S/ ${"%.2f".format(pedido.totalItem)}",
                                         fontWeight = FontWeight.Bold,
-                                        color = MaterialTheme.colorScheme.primary
+                                        color = MaterialTheme.colorScheme.primary,
+                                        maxLines = 1,
+                                        softWrap = false
                                     )
                                     Surface(
                                         color = if (pedido.estadoPago == "Pagado") SuccessGreen else WarningRed,
@@ -351,8 +458,11 @@ fun ReportsScreen(viewModel: ReportsViewModel = androidx.lifecycle.viewmodel.com
                                         Text(
                                             text = pedido.estadoPago,
                                             style = MaterialTheme.typography.labelSmall,
+                                            fontWeight = FontWeight.Bold,
                                             color = Color.White,
-                                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                            maxLines = 1,
+                                            softWrap = false,
+                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                                         )
                                     }
                                 }
@@ -419,9 +529,11 @@ fun ReportCard(
                     text = title,
                     style = MaterialTheme.typography.bodyMedium,
                     fontWeight = FontWeight.Medium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.weight(1f, fill = false)
                 )
                 badgeText?.let {
+                    Spacer(modifier = Modifier.width(8.dp))
                     Surface(
                         color = MaterialTheme.colorScheme.primary,
                         shape = RoundedCornerShape(6.dp)
@@ -429,8 +541,11 @@ fun ReportCard(
                         Text(
                             text = it,
                             style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
                             color = Color.White,
-                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            maxLines = 1,
+                            softWrap = false,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
                         )
                     }
                 }
@@ -440,7 +555,9 @@ fun ReportCard(
                 text = "S/ ${"%.2f".format(amount)}",
                 style = if (isMain) MaterialTheme.typography.displaySmall else MaterialTheme.typography.headlineSmall,
                 color = MaterialTheme.colorScheme.primary,
-                fontWeight = FontWeight.Bold
+                fontWeight = FontWeight.Bold,
+                maxLines = 1,
+                softWrap = false
             )
             subtitle?.let {
                 Spacer(modifier = Modifier.height(4.dp))
@@ -459,5 +576,180 @@ fun ReportCard(
 fun ReportsScreenPreview() {
     BarPOSTheme {
         ReportsScreen()
+    }
+}
+
+private fun openDownloadOutputStream(
+    context: Context,
+    fileName: String,
+    mimeType: String
+): OutputStream? {
+    return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+        val values = ContentValues().apply {
+            put(MediaStore.Downloads.DISPLAY_NAME, fileName)
+            put(MediaStore.Downloads.MIME_TYPE, mimeType)
+            put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
+        }
+        val uri = context.contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
+        uri?.let { context.contentResolver.openOutputStream(it) }
+    } else {
+        @Suppress("DEPRECATION")
+        val downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+        if (!downloadsDir.exists()) downloadsDir.mkdirs()
+        FileOutputStream(File(downloadsDir, fileName))
+    }
+}
+
+fun exportReportToCsv(context: Context, state: ReportsUiState): String? {
+    return try {
+        val safeDate = state.selectedDate.ifBlank { BarRepository.getTodayString() }
+        val fileName = "Reporte_Caja_${safeDate}.csv"
+        val out = openDownloadOutputStream(context, fileName, "text/csv") ?: return null
+        out.use { stream ->
+            val sb = StringBuilder()
+            // UTF-8 BOM para que Excel reconozca tildes y caracteres especiales
+            sb.append('\uFEFF')
+            sb.appendLine("REPORTE DE CIERRE DE CAJA - BARPOS")
+            sb.appendLine("Fecha,${safeDate}")
+            sb.appendLine("Total Recaudado (Pagado),S/ ${"%.2f".format(Locale.US, state.totalRecaudado)}")
+            sb.appendLine("Total Yape / Digital,S/ ${"%.2f".format(Locale.US, state.totalYape)}")
+            sb.appendLine("Total en Efectivo (Caja),S/ ${"%.2f".format(Locale.US, state.totalEfectivo)}")
+            sb.appendLine("Comida Vendida (${state.cantidadComida} platos),S/ ${"%.2f".format(Locale.US, state.totalComida)}")
+            sb.appendLine("Bebidas Vendidas (${state.cantidadBebida} uds),S/ ${"%.2f".format(Locale.US, state.totalBebida)}")
+            sb.appendLine("Total Pendiente de Cobro,S/ ${"%.2f".format(Locale.US, state.totalPendiente)}")
+            sb.appendLine()
+            sb.appendLine("ID_Pedido,Fecha_Hora,Mesa_o_Destino,Categoria,Producto,Cantidad,Precio_Unitario,Total_Item,Tipo_Orden,Metodo_Pago,Monto_Efectivo,Monto_Yape,Estado_Cocina,Estado_Pago")
+            state.ordenes.forEach { item ->
+                val prodClean = item.producto.replace("\"", "\"\"")
+                sb.appendLine(
+                    "\"${item.idPedido}\",\"${item.fechaHora}\",\"${item.idMesa}\",\"${item.categoria}\",\"$prodClean\",${item.cantidad},${"%.2f".format(Locale.US, item.precioUnitario)},${"%.2f".format(Locale.US, item.totalItem)},\"${item.tipoOrden}\",\"${item.metodoPago}\",${"%.2f".format(Locale.US, item.montoEfectivo)},${"%.2f".format(Locale.US, item.montoYape)},\"${item.estadoCocina}\",\"${item.estadoPago}\""
+                )
+            }
+            stream.write(sb.toString().toByteArray(Charsets.UTF_8))
+            stream.flush()
+        }
+        fileName
+    } catch (e: Exception) {
+        e.printStackTrace()
+        null
+    }
+}
+
+fun exportReportToPdf(context: Context, state: ReportsUiState): String? {
+    return try {
+        val safeDate = state.selectedDate.ifBlank { BarRepository.getTodayString() }
+        val fileName = "Reporte_Caja_${safeDate}.pdf"
+        val pdfDocument = PdfDocument()
+
+        val pageWidth = 595
+        val pageHeight = 842
+        var pageNumber = 1
+        var pageInfo = PdfDocument.PageInfo.Builder(pageWidth, pageHeight, pageNumber).create()
+        var page = pdfDocument.startPage(pageInfo)
+        var canvas = page.canvas
+
+        val titlePaint = Paint().apply {
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            textSize = 18f
+            color = android.graphics.Color.BLACK
+        }
+        val subtitlePaint = Paint().apply {
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            textSize = 13f
+            color = android.graphics.Color.DKGRAY
+        }
+        val bodyPaint = Paint().apply {
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
+            textSize = 11f
+            color = android.graphics.Color.BLACK
+        }
+        val boldBodyPaint = Paint().apply {
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            textSize = 11f
+            color = android.graphics.Color.BLACK
+        }
+        val linePaint = Paint().apply {
+            color = android.graphics.Color.LTGRAY
+            strokeWidth = 1f
+        }
+
+        var y = 45f
+        canvas.drawText("BARPOS - REPORTE DE CIERRE DE CAJA", 40f, y, titlePaint)
+        y += 22f
+        canvas.drawText("Fecha del Reporte: $safeDate", 40f, y, subtitlePaint)
+        y += 15f
+        canvas.drawLine(40f, y, (pageWidth - 40).toFloat(), y, linePaint)
+        y += 22f
+
+        canvas.drawText("RESUMEN DE CAJA", 40f, y, subtitlePaint)
+        y += 20f
+        canvas.drawText("Total Recaudado (Pagado):", 40f, y, boldBodyPaint)
+        canvas.drawText("S/ ${"%.2f".format(Locale.US, state.totalRecaudado)}", 240f, y, boldBodyPaint)
+        y += 18f
+        canvas.drawText("Total Yape / Digital:", 40f, y, bodyPaint)
+        canvas.drawText("S/ ${"%.2f".format(Locale.US, state.totalYape)}", 240f, y, bodyPaint)
+        y += 18f
+        canvas.drawText("Total en Efectivo (Caja):", 40f, y, bodyPaint)
+        canvas.drawText("S/ ${"%.2f".format(Locale.US, state.totalEfectivo)}", 240f, y, bodyPaint)
+        y += 18f
+        canvas.drawText("Comida Vendida (${state.cantidadComida} platos):", 40f, y, bodyPaint)
+        canvas.drawText("S/ ${"%.2f".format(Locale.US, state.totalComida)}", 240f, y, bodyPaint)
+        y += 18f
+        canvas.drawText("Bebidas Vendidas (${state.cantidadBebida} uds):", 40f, y, bodyPaint)
+        canvas.drawText("S/ ${"%.2f".format(Locale.US, state.totalBebida)}", 240f, y, bodyPaint)
+        y += 18f
+        canvas.drawText("Total Pendiente de Cobro:", 40f, y, boldBodyPaint)
+        canvas.drawText("S/ ${"%.2f".format(Locale.US, state.totalPendiente)}", 240f, y, boldBodyPaint)
+        y += 18f
+        canvas.drawLine(40f, y, (pageWidth - 40).toFloat(), y, linePaint)
+        y += 24f
+
+        canvas.drawText("DETALLE DE COMANDAS (${state.ordenes.size} ítems)", 40f, y, subtitlePaint)
+        y += 20f
+
+        canvas.drawText("Pedido / Mesa", 40f, y, boldBodyPaint)
+        canvas.drawText("Producto", 165f, y, boldBodyPaint)
+        canvas.drawText("Método", 360f, y, boldBodyPaint)
+        canvas.drawText("Estado", 430f, y, boldBodyPaint)
+        canvas.drawText("Total", 500f, y, boldBodyPaint)
+        y += 8f
+        canvas.drawLine(40f, y, (pageWidth - 40).toFloat(), y, linePaint)
+        y += 16f
+
+        for (item in state.ordenes) {
+            if (y > pageHeight - 50) {
+                pdfDocument.finishPage(page)
+                pageNumber++
+                pageInfo = PdfDocument.PageInfo.Builder(pageWidth, pageHeight, pageNumber).create()
+                page = pdfDocument.startPage(pageInfo)
+                canvas = page.canvas
+                y = 45f
+            }
+            val pedidoMesa = "${item.idPedido} (${item.idMesa})".take(20)
+            val prodText = "${item.cantidad}x ${item.producto}".take(30)
+            canvas.drawText(pedidoMesa, 40f, y, bodyPaint)
+            canvas.drawText(prodText, 165f, y, bodyPaint)
+            canvas.drawText(item.metodoPago.take(10), 360f, y, bodyPaint)
+            canvas.drawText(item.estadoPago.take(10), 430f, y, bodyPaint)
+            canvas.drawText("S/ ${"%.2f".format(Locale.US, item.totalItem)}", 500f, y, bodyPaint)
+            y += 16f
+        }
+
+        pdfDocument.finishPage(page)
+
+        val out = openDownloadOutputStream(context, fileName, "application/pdf")
+        if (out == null) {
+            pdfDocument.close()
+            return null
+        }
+        out.use { stream ->
+            pdfDocument.writeTo(stream)
+            stream.flush()
+        }
+        pdfDocument.close()
+        fileName
+    } catch (e: Exception) {
+        e.printStackTrace()
+        null
     }
 }

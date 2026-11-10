@@ -3,8 +3,10 @@ package com.daltonfercs.barpos.ui.orders
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CheckCircle
@@ -526,8 +528,11 @@ fun PaymentSheetContent(
     Column(
         modifier = Modifier
             .fillMaxWidth()
+            .verticalScroll(rememberScrollState())
+            .imePadding()
+            .navigationBarsPadding()
             .padding(horizontal = 24.dp)
-            .padding(bottom = 32.dp)
+            .padding(bottom = 24.dp)
     ) {
         Text(
             text = "Cobrar Pedido #${orderGroup.idPedido}",
@@ -715,50 +720,53 @@ fun PaymentSheetContent(
         }
 
         if (metodoSeleccionado == "Mixto") {
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(12.dp))
             Text(
                 text = "Desglose de Pago Mixto",
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.SemiBold
             )
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(6.dp))
 
-            OutlinedTextField(
-                value = efectivoInput,
-                onValueChange = { newVal ->
-                    efectivoInput = newVal
-                    val ef = newVal.replace(",", ".").toDoubleOrNull()
-                    if (ef != null && ef <= total && ef >= 0.0) {
-                        yapeInput = "%.2f".format(Locale.US, (total - ef).coerceAtLeast(0.0))
-                    }
-                },
-                label = { Text("Monto en Efectivo (S/)") },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                singleLine = true,
+            Row(
                 modifier = Modifier.fillMaxWidth(),
-                isError = montoEfectivoMixto > total || montoEfectivoMixto < 0.0
-            )
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                OutlinedTextField(
+                    value = efectivoInput,
+                    onValueChange = { newVal ->
+                        efectivoInput = newVal
+                        val ef = newVal.replace(",", ".").toDoubleOrNull()
+                        if (ef != null && ef <= total && ef >= 0.0) {
+                            yapeInput = "%.2f".format(Locale.US, (total - ef).coerceAtLeast(0.0))
+                        }
+                    },
+                    label = { Text("Efectivo (S/)") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    singleLine = true,
+                    modifier = Modifier.weight(1f),
+                    isError = montoEfectivoMixto > total || montoEfectivoMixto < 0.0
+                )
 
-            Spacer(modifier = Modifier.height(10.dp))
-
-            OutlinedTextField(
-                value = yapeInput,
-                onValueChange = { newVal ->
-                    yapeInput = newVal
-                    val yp = newVal.replace(",", ".").toDoubleOrNull()
-                    if (yp != null && yp <= total && yp >= 0.0) {
-                        efectivoInput = "%.2f".format(Locale.US, (total - yp).coerceAtLeast(0.0))
-                    }
-                },
-                label = { Text("Monto en Yape (S/)") },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
-                isError = montoYapeMixto > total || montoYapeMixto < 0.0
-            )
+                OutlinedTextField(
+                    value = yapeInput,
+                    onValueChange = { newVal ->
+                        yapeInput = newVal
+                        val yp = newVal.replace(",", ".").toDoubleOrNull()
+                        if (yp != null && yp <= total && yp >= 0.0) {
+                            efectivoInput = "%.2f".format(Locale.US, (total - yp).coerceAtLeast(0.0))
+                        }
+                    },
+                    label = { Text("Yape (S/)") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    singleLine = true,
+                    modifier = Modifier.weight(1f),
+                    isError = montoYapeMixto > total || montoYapeMixto < 0.0
+                )
+            }
         }
 
-        Spacer(modifier = Modifier.height(24.dp))
+        Spacer(modifier = Modifier.height(16.dp))
 
         Row(
             modifier = Modifier.fillMaxWidth(),

@@ -35,6 +35,10 @@ object BarRepository {
 
     // Almacena la cantidad de tápers modificada manualmente por pedido en Stand By / Cobro
     private val modifiedTapersByOrder = ConcurrentHashMap<String, Int>()
+    private val deletedTableIds = ConcurrentHashMap.newKeySet<String>()
+    private val deletedProductIds = ConcurrentHashMap.newKeySet<String>()
+    private val modifiedTables = ConcurrentHashMap<String, TableModel>()
+    private val modifiedProducts = ConcurrentHashMap<String, Producto>()
 
     fun isTaperItem(item: PedidoItem): Boolean {
         return item.categoria.equals("Empaque", ignoreCase = true) ||
@@ -297,23 +301,27 @@ object BarRepository {
                 val remoteTables = response.body()?.data
                 if (!remoteTables.isNullOrEmpty()) {
                     val localMap = _tables.value.associateBy { it.idMesa }
-                    val mergedRemote = remoteTables.map { remote ->
-                        val local = localMap[remote.idMesa]
-                        val hasPendingOrders = _orders.value.any { ord ->
-                            ord.estadoPago.equals("Pendiente", ignoreCase = true) && (
-                                    ord.idMesa.equals(remote.idMesa, ignoreCase = true) ||
-                                            ord.idMesa.equals("Mesa ${remote.numero}", ignoreCase = true) ||
-                                            ord.idMesa == remote.numero.toString()
-                                    )
+                    val mergedRemote = remoteTables
+                        .filter { it.idMesa !in deletedTableIds }
+                        .map { remote ->
+                            val localMod = modifiedTables[remote.idMesa]
+                            val baseTable = localMod ?: remote
+                            val local = localMap[remote.idMesa]
+                            val hasPendingOrders = _orders.value.any { ord ->
+                                ord.estadoPago.equals("Pendiente", ignoreCase = true) && (
+                                        ord.idMesa.equals(baseTable.idMesa, ignoreCase = true) ||
+                                                ord.idMesa.equals("Mesa ${baseTable.numero}", ignoreCase = true) ||
+                                                ord.idMesa == baseTable.numero.toString()
+                                        )
+                            }
+                            if (hasPendingOrders || local?.estado == "Ocupada") {
+                                baseTable.copy(estado = "Ocupada")
+                            } else {
+                                baseTable
+                            }
                         }
-                        if (hasPendingOrders || local?.estado == "Ocupada") {
-                            remote.copy(estado = "Ocupada")
-                        } else {
-                            remote
-                        }
-                    }
                     val remoteIds = mergedRemote.map { it.idMesa }.toSet()
-                    val onlyLocal = _tables.value.filter { it.idMesa !in remoteIds }
+                    val onlyLocal = _tables.value.filter { it.idMesa !in remoteIds && it.idMesa !in deletedTableIds }
                     _tables.value = (mergedRemote + onlyLocal).sortedBy { it.numero }
                 }
             }
@@ -329,17 +337,23 @@ object BarRepository {
                 val remoteProds = response.body()?.data
                 if (!remoteProds.isNullOrEmpty()) {
                     val localMap = _products.value.associateBy { it.id_producto }
-                    val mergedRemote = remoteProds.map { remote ->
-                        val local = localMap[remote.id_producto]
-                        // Si localmente se descontó stock o se editó, conservar el menor stock o estado local
-                        if (local != null && local.stock != remote.stock) {
-                            local
-                        } else {
-                            remote
+                    val mergedRemote = remoteProds
+                        .filter { it.id_producto !in deletedProductIds && it.id !in deletedProductIds }
+                        .map { remote ->
+                            val localMod = modifiedProducts[remote.id_producto] ?: modifiedProducts[remote.id]
+                            val local = localMap[remote.id_producto]
+                            when {
+                                localMod != null -> localMod
+                                local != null && (local.stock != remote.stock || local.disponible != remote.disponible) -> local
+                                else -> remote
+                            }
                         }
-                    }
                     val remoteIds = mergedRemote.map { it.id_producto }.toSet()
-                    val onlyLocal = _products.value.filter { it.id_producto !in remoteIds }
+                    val onlyLocal = _products.value.filter {
+                        it.id_producto !in remoteIds &&
+                                it.id_producto !in deletedProductIds &&
+                                it.id !in deletedProductIds
+                    }
                     _products.value = mergedRemote + onlyLocal
                 }
             }
@@ -576,7 +590,8 @@ object BarRepository {
                 metodoPago = metodoPago,
                 montoEfectivo = montoEfectivo,
                 montoYape = montoYape,
-                montoTotal = montoEfectivo + montoYape
+                montoTotal = montoEfectivo + montoYape,
+                cantidadTapers = cantidadTapers ?: modifiedTapersByOrder[idPedido]
             )
             val response = NetworkModule.apiService.cobrarOrden(request)
             Log.d(TAG, "Orden $idPedido cobrada en Sheets: code ${response.code()}")
@@ -741,16 +756,70 @@ object BarRepository {
     }
 
     fun addTable(numero: Int, capacidad: Int) {
+        val idMesa = "M-${"%02d".format(numero)}"
+        deletedTableIds.remove(idMesa)
         val newTable = TableModel(
-            idMesa = "M-${"%02d".format(numero)}",
+            idMesa = idMesa,
             numero = numero,
             capacidad = capacidad,
             estado = "Libre"
         )
-        _tables.value = _tables.value + newTable
+        _tables.value = (_tables.value.filter { it.idMesa != idMesa } + newTable).sortedBy { it.numero }
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                NetworkModule.apiService.createTable(CreateTableRequest(mesa = newTable))
+            } catch (e: Exception) {
+                Log.e(TAG, "Error creando mesa en Sheets: ${e.message}")
+            }
+        }
+    }
+
+    fun updateTable(idMesa: String, nuevoNumero: Int, nuevaCapacidad: Int) {
+        var updatedModel: TableModel? = null
+        _tables.value = _tables.value.map { table ->
+            if (table.idMesa == idMesa) {
+                val mod = table.copy(numero = nuevoNumero, capacidad = nuevaCapacidad)
+                updatedModel = mod
+                modifiedTables[idMesa] = mod
+                mod
+            } else table
+        }.sortedBy { it.numero }
+
+        val targetMesa = updatedModel ?: TableModel(idMesa = idMesa, numero = nuevoNumero, capacidad = nuevaCapacidad, estado = "Libre")
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                NetworkModule.apiService.updateTable(
+                    UpdateTableRequest(
+                        action = "modificar_mesa",
+                        idMesa = idMesa,
+                        mesa = targetMesa
+                    )
+                )
+            } catch (e: Exception) {
+                Log.e(TAG, "Error modificando mesa en Sheets: ${e.message}")
+            }
+        }
+    }
+
+    fun deleteTable(idMesa: String) {
+        deletedTableIds.add(idMesa)
+        modifiedTables.remove(idMesa)
+        _tables.value = _tables.value.filterNot { it.idMesa == idMesa }
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                localDao?.deleteMesaById(idMesa)
+                NetworkModule.apiService.deleteTable(
+                    DeleteTableRequest(action = "eliminar_mesa", idMesa = idMesa)
+                )
+            } catch (e: Exception) {
+                Log.e(TAG, "Error eliminando mesa en Sheets: ${e.message}")
+            }
+        }
     }
 
     fun addProduct(producto: Producto) {
+        deletedProductIds.remove(producto.id_producto)
+        deletedProductIds.remove(producto.id)
         _products.value = _products.value + producto
         CoroutineScope(Dispatchers.IO).launch {
             try {
@@ -761,20 +830,103 @@ object BarRepository {
         }
     }
 
-    fun toggleProductDisponibilidad(productoId: String, disponible: Boolean) {
+    fun updateProduct(producto: Producto) {
+        val key = producto.id_producto
+        modifiedProducts[key] = producto
+        if (producto.id.isNotBlank()) modifiedProducts[producto.id] = producto
         _products.value = _products.value.map { prod ->
-            if (prod.id_producto == productoId || prod.id == productoId) {
-                prod.copy(disponible = disponible)
+            if (prod.id_producto == key || (producto.id.isNotBlank() && prod.id == producto.id)) {
+                producto
             } else prod
+        }
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                NetworkModule.apiService.updateProduct(
+                    UpdateProductRequest(
+                        action = "modificar_producto",
+                        idProducto = producto.id.ifBlank { producto.id_producto },
+                        producto = producto
+                    )
+                )
+            } catch (e: Exception) {
+                Log.e(TAG, "Error modificando producto en Sheets: ${e.message}")
+            }
+        }
+    }
+
+    fun deleteProduct(productoId: String) {
+        deletedProductIds.add(productoId)
+        modifiedProducts.remove(productoId)
+        _products.value = _products.value.filterNot {
+            it.id_producto == productoId || it.id == productoId
+        }
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                localDao?.deleteProductoById(productoId)
+                NetworkModule.apiService.deleteProduct(
+                    DeleteProductRequest(action = "eliminar_producto", idProducto = productoId)
+                )
+            } catch (e: Exception) {
+                Log.e(TAG, "Error eliminando producto en Sheets: ${e.message}")
+            }
+        }
+    }
+
+    fun toggleProductDisponibilidad(productoId: String, disponible: Boolean) {
+        var updatedProd: Producto? = null
+        _products.value = _products.value.map { prod ->
+            if (prod.id_producto == productoId || prod.id == productoId || prod.nombre.equals(productoId, ignoreCase = true)) {
+                val nuevoStock = if (disponible && prod.stock <= 0) 1 else prod.stock
+                val mod = prod.copy(disponible = disponible, stock = nuevoStock)
+                updatedProd = mod
+                modifiedProducts[prod.id_producto] = mod
+                if (prod.id.isNotBlank()) modifiedProducts[prod.id] = mod
+                mod
+            } else prod
+        }
+        updatedProd?.let { prod ->
+            CoroutineScope(Dispatchers.IO).launch {
+                try {
+                    NetworkModule.apiService.updateProduct(
+                        UpdateProductRequest(
+                            action = "modificar_producto",
+                            idProducto = prod.id.ifBlank { prod.id_producto },
+                            producto = prod
+                        )
+                    )
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error actualizando disponibilidad en Sheets: ${e.message}")
+                }
+            }
         }
     }
 
     fun updateProductStock(productoId: String, nuevoStock: Int) {
         val stockSafe = nuevoStock.coerceAtLeast(0)
+        var updatedProd: Producto? = null
         _products.value = _products.value.map { prod ->
-            if (prod.id_producto == productoId || prod.id == productoId) {
-                prod.copy(stock = stockSafe, disponible = stockSafe > 0)
+            if (prod.id_producto == productoId || prod.id == productoId || prod.nombre.equals(productoId, ignoreCase = true)) {
+                val mod = prod.copy(stock = stockSafe, disponible = stockSafe > 0)
+                updatedProd = mod
+                modifiedProducts[prod.id_producto] = mod
+                if (prod.id.isNotBlank()) modifiedProducts[prod.id] = mod
+                mod
             } else prod
+        }
+        updatedProd?.let { prod ->
+            CoroutineScope(Dispatchers.IO).launch {
+                try {
+                    NetworkModule.apiService.updateProduct(
+                        UpdateProductRequest(
+                            action = "modificar_producto",
+                            idProducto = prod.id.ifBlank { prod.id_producto },
+                            producto = prod
+                        )
+                    )
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error actualizando stock en Sheets: ${e.message}")
+                }
+            }
         }
     }
 }

@@ -1,13 +1,16 @@
 package com.daltonfercs.barpos.ui.catalog
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.LocalShipping
@@ -20,6 +23,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
@@ -373,31 +377,50 @@ fun CatalogScreen(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(16.dp),
+                            .padding(horizontal = 12.dp, vertical = 12.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Column(modifier = Modifier.clickable { showCartBottomSheet = true }) {
+                        Column(
+                            modifier = Modifier
+                                .weight(1f)
+                                .padding(end = 8.dp)
+                                .clickable { showCartBottomSheet = true }
+                        ) {
                             Text(
-                                "${uiState.cantidadTotal} productos • ${uiState.tipoOrden}",
-                                style = MaterialTheme.typography.bodySmall
+                                "${uiState.cantidadTotal} prod. • ${uiState.tipoOrden}",
+                                style = MaterialTheme.typography.bodySmall,
+                                maxLines = 1,
+                                softWrap = false,
+                                overflow = TextOverflow.Ellipsis
                             )
                             Text(
                                 "Total: S/ ${"%.2f".format(uiState.total)}",
-                                style = MaterialTheme.typography.titleLarge,
+                                style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.primary
+                                color = MaterialTheme.colorScheme.primary,
+                                maxLines = 1,
+                                softWrap = false,
+                                overflow = TextOverflow.Ellipsis
                             )
                         }
 
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
                             OutlinedButton(
                                 onClick = { showCartBottomSheet = true },
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
                                 shape = RoundedCornerShape(12.dp)
                             ) {
-                                Icon(Icons.Filled.ShoppingCart, contentDescription = "Ver Pedido", modifier = Modifier.size(18.dp))
+                                Icon(Icons.Filled.ShoppingCart, contentDescription = "Ver Pedido", modifier = Modifier.size(16.dp))
                                 Spacer(modifier = Modifier.width(4.dp))
-                                Text("Resumen")
+                                Text(
+                                    "Resumen",
+                                    maxLines = 1,
+                                    softWrap = false
+                                )
                             }
 
                             Button(
@@ -405,6 +428,7 @@ fun CatalogScreen(
                                     viewModel.enviarComandaACocina { }
                                 },
                                 enabled = !uiState.isLoading,
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
                                 colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
                                 shape = RoundedCornerShape(12.dp)
                             ) {
@@ -415,7 +439,13 @@ fun CatalogScreen(
                                         strokeWidth = 2.dp
                                     )
                                 } else {
-                                    Text("👨‍🍳 A Cocina", color = Color.White, fontWeight = FontWeight.Bold)
+                                    Text(
+                                        "👨‍🍳 A Cocina",
+                                        color = Color.White,
+                                        fontWeight = FontWeight.Bold,
+                                        maxLines = 1,
+                                        softWrap = false
+                                    )
                                 }
                             }
                         }
@@ -443,7 +473,12 @@ fun CatalogScreen(
                         onClick = { viewModel.setTipoOrden(modo) },
                         shape = SegmentedButtonDefaults.itemShape(index = index, count = modalidades.size)
                     ) {
-                        Text(if (modo == "En Mesa") "🪑 En Mesa ($mesaLabel)" else "🛵 Para Llevar / Envío")
+                        Text(
+                            text = if (modo == "En Mesa") "🪑 En Mesa ($mesaLabel)" else "🛵 Para Llevar / Envío",
+                            maxLines = 1,
+                            softWrap = false,
+                            overflow = TextOverflow.Ellipsis
+                        )
                     }
                 }
             }
@@ -529,8 +564,11 @@ fun CartBottomSheetContent(
     Column(
         modifier = Modifier
             .fillMaxWidth()
+            .verticalScroll(rememberScrollState())
+            .imePadding()
+            .navigationBarsPadding()
             .padding(horizontal = 20.dp)
-            .padding(bottom = 32.dp)
+            .padding(bottom = 24.dp)
     ) {
         Text(
             text = "Resumen de la Comanda",
@@ -549,7 +587,12 @@ fun CartBottomSheetContent(
                     onClick = { onTipoOrdenChange(modo) },
                     shape = SegmentedButtonDefaults.itemShape(index = index, count = modalidades.size)
                 ) {
-                    Text(if (modo == "En Mesa") "🪑 En Mesa" else "🛵 Para Llevar / Envío")
+                    Text(
+                        text = if (modo == "En Mesa") "🪑 En Mesa" else "🛵 Para Llevar / Envío",
+                        maxLines = 1,
+                        softWrap = false,
+                        overflow = TextOverflow.Ellipsis
+                    )
                 }
             }
         }
@@ -564,14 +607,16 @@ fun CartBottomSheetContent(
             )
             Spacer(modifier = Modifier.height(6.dp))
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                uiState.mesas.take(6).forEach { mesa ->
+                uiState.mesas.forEach { mesa ->
                     FilterChip(
                         selected = uiState.mesaSeleccionada == mesa.idMesa,
                         onClick = { onMesaChange(mesa.idMesa) },
-                        label = { Text("M-${mesa.numero}") }
+                        label = { Text("M-${mesa.numero}", maxLines = 1, softWrap = false) }
                     )
                 }
             }
@@ -802,7 +847,9 @@ fun ProductCard(
                     text = "S/ ${"%.2f".format(producto.precio)}",
                     style = MaterialTheme.typography.bodyLarge,
                     color = if (sinStock) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.primary,
-                    fontWeight = FontWeight.Bold
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    softWrap = false
                 )
                 Surface(
                     color = when {
@@ -816,6 +863,8 @@ fun ProductCard(
                         text = if (sinStock) "Agotado" else "Stock: $stockRestante",
                         style = MaterialTheme.typography.labelSmall,
                         fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        softWrap = false,
                         color = when {
                             sinStock -> MaterialTheme.colorScheme.error
                             stockRestante <= 5 -> Color(0xFFFF9800)

@@ -40,18 +40,22 @@ data class Producto(
     val stock: Int = 0
 ) {
     val id_producto: String
-        get() = id.ifBlank { nombre }
+        get() = (id as String?).orEmpty().ifBlank { (nombre as String?).orEmpty() }
 
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
         if (other !is Producto) return false
-        val thisKey = id.ifBlank { nombre }
-        val otherKey = other.id.ifBlank { other.nombre }
-        return thisKey == otherKey
+        return java.util.Objects.equals(id, other.id) &&
+                java.util.Objects.equals(nombre, other.nombre) &&
+                java.util.Objects.equals(categoria, other.categoria) &&
+                java.util.Objects.equals(tipo, other.tipo) &&
+                precio == other.precio &&
+                disponible == other.disponible &&
+                stock == other.stock
     }
 
     override fun hashCode(): Int {
-        return (id.ifBlank { nombre }).hashCode()
+        return java.util.Objects.hash(id, nombre, categoria, tipo, precio, disponible, stock)
     }
 }
 
@@ -63,12 +67,77 @@ data class CreateProductRequest(
     val producto: Producto
 )
 
+data class UpdateProductRequest(
+    @SerializedName("action", alternate = ["ACTION"])
+    val action: String = "modificar_producto",
+
+    @SerializedName("id_producto", alternate = ["ID_Producto", "id"])
+    val idProducto: String,
+
+    @SerializedName("producto", alternate = ["Producto"])
+    val producto: Producto,
+
+    @SerializedName("nombre", alternate = ["Nombre"])
+    val nombre: String = producto.nombre,
+
+    @SerializedName("categoria", alternate = ["Categoria"])
+    val categoria: String = producto.categoria,
+
+    @SerializedName("tipo", alternate = ["Tipo"])
+    val tipo: String = producto.tipo,
+
+    @SerializedName("precio", alternate = ["Precio"])
+    val precio: Double = producto.precio,
+
+    @SerializedName("disponible", alternate = ["Disponible"])
+    val disponible: Boolean = producto.disponible,
+
+    @SerializedName("stock", alternate = ["Stock"])
+    val stock: Int = producto.stock
+)
+
+data class DeleteProductRequest(
+    @SerializedName("action", alternate = ["ACTION"])
+    val action: String = "eliminar_producto",
+
+    @SerializedName("id_producto", alternate = ["ID_Producto", "id"])
+    val idProducto: String
+)
+
 data class CreateTableRequest(
     @SerializedName("action", alternate = ["ACTION"])
     val action: String = "crear_mesa",
 
     @SerializedName("mesa", alternate = ["Mesa"])
     val mesa: TableModel
+)
+
+data class UpdateTableRequest(
+    @SerializedName("action", alternate = ["ACTION"])
+    val action: String = "modificar_mesa",
+
+    @SerializedName("id_mesa", alternate = ["ID_Mesa", "idMesa"])
+    val idMesa: String,
+
+    @SerializedName("mesa", alternate = ["Mesa"])
+    val mesa: TableModel,
+
+    @SerializedName("numero", alternate = ["Numero"])
+    val numero: Int = mesa.numero,
+
+    @SerializedName("capacidad", alternate = ["Capacidad"])
+    val capacidad: Int = mesa.capacidad,
+
+    @SerializedName("estado", alternate = ["Estado"])
+    val estado: String = mesa.estado
+)
+
+data class DeleteTableRequest(
+    @SerializedName("action", alternate = ["ACTION"])
+    val action: String = "eliminar_mesa",
+
+    @SerializedName("id_mesa", alternate = ["ID_Mesa", "idMesa"])
+    val idMesa: String
 )
 
 data class MarcarListoRequest(
@@ -189,7 +258,10 @@ data class CobrarOrdenRequest(
     val montoYape: Double = 0.0,
 
     @SerializedName("monto_total", alternate = ["montoTotal", "Monto_Total"])
-    val montoTotal: Double = montoEfectivo + montoYape
+    val montoTotal: Double = montoEfectivo + montoYape,
+
+    @SerializedName("cantidad_tapers", alternate = ["cantidadTapers", "Cantidad_Tapers"])
+    val cantidadTapers: Int? = null
 )
 
 

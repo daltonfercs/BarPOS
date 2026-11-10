@@ -7,6 +7,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
@@ -53,6 +55,18 @@ class ProductsViewModel : androidx.lifecycle.ViewModel() {
         }
     }
 
+    fun updateProduct(producto: Producto) {
+        viewModelScope.launch {
+            BarRepository.updateProduct(producto)
+        }
+    }
+
+    fun deleteProduct(productoId: String) {
+        viewModelScope.launch {
+            BarRepository.deleteProduct(productoId)
+        }
+    }
+
     fun toggleDisponibilidad(productoId: String, disponible: Boolean) {
         BarRepository.toggleProductDisponibilidad(productoId, disponible)
     }
@@ -72,13 +86,16 @@ class ProductsViewModel : androidx.lifecycle.ViewModel() {
 @Composable
 fun ProductsScreen(viewModel: ProductsViewModel = androidx.lifecycle.viewmodel.compose.viewModel()) {
     val uiState by viewModel.uiState.collectAsState()
-    
+
     var searchQuery by remember { mutableStateOf("") }
     var selectedTab by remember { mutableStateOf("Todos") }
     val tabs = listOf("Todos", "Bebidas", "Comidas", "Snacks")
-    
+
     var showAddDialog by remember { mutableStateOf(false) }
-    val sheetState = rememberModalBottomSheetState()
+    var productToEdit by remember { mutableStateOf<Producto?>(null) }
+    var productToDelete by remember { mutableStateOf<Producto?>(null) }
+
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
 
@@ -86,7 +103,7 @@ fun ProductsScreen(viewModel: ProductsViewModel = androidx.lifecycle.viewmodel.c
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
-                title = { Text("Inventario de Productos") },
+                title = { Text("Inventario de Productos", fontWeight = FontWeight.Bold) },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface),
                 actions = {
                     IconButton(onClick = { viewModel.refreshProducts() }) {
@@ -97,7 +114,10 @@ fun ProductsScreen(viewModel: ProductsViewModel = androidx.lifecycle.viewmodel.c
         },
         floatingActionButton = {
             FloatingActionButton(
-                onClick = { showAddDialog = true },
+                onClick = {
+                    productToEdit = null
+                    showAddDialog = true
+                },
                 containerColor = MaterialTheme.colorScheme.primary
             ) {
                 Icon(Icons.Filled.Add, contentDescription = "Nuevo Producto", tint = Color.White)
@@ -161,14 +181,28 @@ fun ProductsScreen(viewModel: ProductsViewModel = androidx.lifecycle.viewmodel.c
                         verticalArrangement = Arrangement.spacedBy(12.dp),
                         modifier = Modifier.fillMaxSize()
                     ) {
-                        items(filteredList) { prod ->
+                        items(filteredList, key = { it.id_producto }) { prod ->
                             ProductInventoryCard(
                                 producto = prod,
                                 onToggleDisponible = { disp ->
                                     viewModel.toggleDisponibilidad(prod.id_producto, disp)
+                                    scope.launch {
+                                        snackbarHostState.currentSnackbarData?.dismiss()
+                                        snackbarHostState.showSnackbar(
+                                            if (disp) "✅ \"${prod.nombre}\" activado"
+                                            else "⛔ \"${prod.nombre}\" desactivado"
+                                        )
+                                    }
                                 },
                                 onStockChange = { newStock ->
                                     viewModel.updateStock(prod.id_producto, newStock)
+                                },
+                                onEditClick = {
+                                    productToEdit = prod
+                                    showAddDialog = true
+                                },
+                                onDeleteClick = {
+                                    productToDelete = prod
                                 }
                             )
                         }
@@ -177,23 +211,68 @@ fun ProductsScreen(viewModel: ProductsViewModel = androidx.lifecycle.viewmodel.c
             }
         }
 
-        // BottomSheet para crear producto
+        // BottomSheet para crear o editar producto
         if (showAddDialog) {
             ModalBottomSheet(
-                onDismissRequest = { showAddDialog = false },
+                onDismissRequest = {
+                    showAddDialog = false
+                    productToEdit = null
+                },
                 sheetState = sheetState
             ) {
                 AddProductForm(
-                    onSave = { nuevoProd ->
-                        viewModel.addProduct(nuevoProd)
+                    initialProduct = productToEdit,
+                    onSave = { prodGuardado ->
+                        val isEditing = productToEdit != null
+                        if (isEditing) {
+                            viewModel.updateProduct(prodGuardado)
+                        } else {
+                            viewModel.addProduct(prodGuardado)
+                        }
                         scope.launch {
                             sheetState.hide()
                             showAddDialog = false
-                            snackbarHostState.showSnackbar("Producto guardado exitosamente")
+                            productToEdit = null
+                            snackbarHostState.showSnackbar(
+                                if (isEditing) "✏️ Producto actualizado correctamente"
+                                else "✅ Producto guardado exitosamente"
+                            )
                         }
                     }
                 )
             }
+        }
+
+        // Diálogo de confirmación para eliminar producto
+        if (productToDelete != null) {
+            val target = productToDelete!!
+            AlertDialog(
+                onDismissRequest = { productToDelete = null },
+                title = { Text("Eliminar Producto", fontWeight = FontWeight.Bold) },
+                text = {
+                    Text("¿Estás seguro de que deseas eliminar \"${target.nombre}\" del inventario? Esta acción enviará la eliminación al sistema.")
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            val idBorrar = target.id.ifBlank { target.id_producto }
+                            viewModel.deleteProduct(idBorrar)
+                            productToDelete = null
+                            scope.launch {
+                                snackbarHostState.showSnackbar("🗑️ Producto \"${target.nombre}\" eliminado")
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                    ) {
+                        Text("Eliminar", color = Color.White, fontWeight = FontWeight.Bold)
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { productToDelete = null }) {
+                        Text("Cancelar")
+                    }
+                }
+            )
         }
     }
 }
@@ -202,85 +281,136 @@ fun ProductsScreen(viewModel: ProductsViewModel = androidx.lifecycle.viewmodel.c
 fun ProductInventoryCard(
     producto: Producto,
     onToggleDisponible: (Boolean) -> Unit = {},
-    onStockChange: (Int) -> Unit = {}
+    onStockChange: (Int) -> Unit = {},
+    onEditClick: () -> Unit = {},
+    onDeleteClick: () -> Unit = {}
 ) {
-    val sinStock = !producto.disponible || producto.stock <= 0
+    val isActive = producto.disponible && producto.stock > 0
+    val statusText = when {
+        !producto.disponible -> "Stock: ${producto.stock} (Desactivado)"
+        producto.stock <= 0 -> "Stock: 0 (Agotado)"
+        else -> "Stock: ${producto.stock}"
+    }
 
     Card(
         shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+        colors = CardDefaults.cardColors(
+            containerColor = if (isActive) MaterialTheme.colorScheme.surfaceVariant
+            else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
+        ),
         modifier = Modifier.fillMaxWidth()
     ) {
-        Row(
+        Column(
             modifier = Modifier
-                .padding(16.dp)
-                .fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
+                .padding(horizontal = 16.dp, vertical = 12.dp)
+                .fillMaxWidth()
         ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = producto.nombre,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold
-                )
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = "${producto.categoria} • ${producto.tipo}",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = if (sinStock) "Stock: ${producto.stock} (Agotado)" else "Stock: ${producto.stock}",
-                        style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = FontWeight.SemiBold,
-                        color = if (sinStock) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
+                        text = producto.nombre,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = if (isActive) MaterialTheme.colorScheme.onSurface
+                        else MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                    FilledTonalIconButton(
-                        onClick = { onStockChange((producto.stock - 1).coerceAtLeast(0)) },
-                        modifier = Modifier.size(28.dp)
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = "${producto.categoria} • ${producto.tipo}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Text("-", fontWeight = FontWeight.Bold)
-                    }
-                    FilledTonalIconButton(
-                        onClick = { onStockChange(producto.stock + 1) },
-                        modifier = Modifier.size(28.dp)
-                    ) {
-                        Text("+", fontWeight = FontWeight.Bold)
+                        Text(
+                            text = statusText,
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = if (!isActive) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
+                        )
+                        FilledTonalIconButton(
+                            onClick = { onStockChange((producto.stock - 1).coerceAtLeast(0)) },
+                            modifier = Modifier.size(28.dp)
+                        ) {
+                            Text("-", fontWeight = FontWeight.Bold)
+                        }
+                        FilledTonalIconButton(
+                            onClick = { onStockChange(producto.stock + 1) },
+                            modifier = Modifier.size(28.dp)
+                        ) {
+                            Text("+", fontWeight = FontWeight.Bold)
+                        }
                     }
                 }
+                Column(horizontalAlignment = Alignment.End) {
+                    Text(
+                        text = "S/ ${"%.2f".format(producto.precio)}",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Switch(
+                        checked = isActive,
+                        onCheckedChange = { checked -> onToggleDisponible(checked) }
+                    )
+                }
             }
-            Column(horizontalAlignment = Alignment.End) {
-                Text(
-                    text = "S/ ${"%.2f".format(producto.precio)}",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.primary
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                Switch(
-                    checked = producto.disponible && producto.stock > 0,
-                    onCheckedChange = { checked -> onToggleDisponible(checked) }
-                )
+
+            Spacer(modifier = Modifier.height(6.dp))
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+
+            // Fila de acciones CRUD (Editar y Eliminar) alineada al final
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                IconButton(onClick = onEditClick) {
+                    Icon(
+                        imageVector = Icons.Filled.Edit,
+                        contentDescription = "Editar producto",
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                }
+                IconButton(onClick = onDeleteClick) {
+                    Icon(
+                        imageVector = Icons.Filled.Delete,
+                        contentDescription = "Eliminar producto",
+                        tint = MaterialTheme.colorScheme.error
+                    )
+                }
             }
         }
     }
 }
 
 @Composable
-fun AddProductForm(onSave: (Producto) -> Unit) {
-    var nombre by remember { mutableStateOf("") }
-    var categoria by remember { mutableStateOf("Bebidas") }
-    var tipo by remember { mutableStateOf("") }
-    var precio by remember { mutableStateOf("") }
-    var stock by remember { mutableStateOf("") }
+fun AddProductForm(
+    initialProduct: Producto? = null,
+    onSave: (Producto) -> Unit
+) {
+    val isEditing = initialProduct != null
+    var nombre by remember(initialProduct) { mutableStateOf(initialProduct?.nombre ?: "") }
+    var categoria by remember(initialProduct) { mutableStateOf(initialProduct?.categoria ?: "Bebidas") }
+    var tipo by remember(initialProduct) { mutableStateOf(initialProduct?.tipo ?: "") }
+    var precio by remember(initialProduct) {
+        mutableStateOf(if (initialProduct != null) "%.2f".format(java.util.Locale.US, initialProduct.precio) else "")
+    }
+    var stock by remember(initialProduct) {
+        mutableStateOf(initialProduct?.stock?.toString() ?: "")
+    }
 
-    val isFormValid = nombre.isNotBlank() && tipo.isNotBlank() && precio.toDoubleOrNull() != null && stock.toIntOrNull() != null
+    val parsedPrecio = precio.replace(",", ".").toDoubleOrNull()
+    val parsedStock = stock.toIntOrNull()
+    val isFormValid = nombre.isNotBlank() && tipo.isNotBlank() && parsedPrecio != null && parsedStock != null
 
     Column(
         modifier = Modifier
@@ -289,8 +419,12 @@ fun AddProductForm(onSave: (Producto) -> Unit) {
             .padding(bottom = 32.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Text("Nuevo Producto", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-        
+        Text(
+            text = if (isEditing) "Editar Producto" else "Nuevo Producto",
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.Bold
+        )
+
         OutlinedTextField(
             value = nombre,
             onValueChange = { nombre = it },
@@ -299,12 +433,39 @@ fun AddProductForm(onSave: (Producto) -> Unit) {
             isError = nombre.isBlank()
         )
 
-        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Text("Categoría:", modifier = Modifier.padding(end = 16.dp))
-            listOf("Bebidas", "Comidas", "Snacks").forEach { cat ->
-                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(end = 8.dp)) {
-                    RadioButton(selected = categoria == cat, onClick = { categoria = cat })
-                    Text(cat)
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            Text(
+                text = "Categoría:",
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.SemiBold
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                listOf("Bebidas", "Comidas", "Snacks").forEach { cat ->
+                    FilterChip(
+                        selected = categoria == cat,
+                        onClick = { categoria = cat },
+                        label = {
+                            Box(
+                                modifier = Modifier.fillMaxWidth(),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = cat,
+                                    maxLines = 1,
+                                    softWrap = false,
+                                    fontWeight = if (categoria == cat) FontWeight.Bold else FontWeight.Normal
+                                )
+                            }
+                        },
+                        modifier = Modifier.weight(1f)
+                    )
                 }
             }
         }
@@ -323,15 +484,15 @@ fun AddProductForm(onSave: (Producto) -> Unit) {
                 label = { Text("Precio (S/)") },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                 modifier = Modifier.weight(1f),
-                isError = precio.isNotEmpty() && precio.toDoubleOrNull() == null
+                isError = precio.isNotEmpty() && parsedPrecio == null
             )
             OutlinedTextField(
                 value = stock,
                 onValueChange = { stock = it },
-                label = { Text("Stock Inicial") },
+                label = { Text("Stock") },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                 modifier = Modifier.weight(1f),
-                isError = stock.isNotEmpty() && stock.toIntOrNull() == null
+                isError = stock.isNotEmpty() && parsedStock == null
             )
         }
 
@@ -339,22 +500,28 @@ fun AddProductForm(onSave: (Producto) -> Unit) {
 
         Button(
             onClick = {
-                val newProd = Producto(
-                    id = System.currentTimeMillis().toString(),
-                    nombre = nombre,
+                val stockVal = parsedStock ?: 0
+                val prodResult = Producto(
+                    id = initialProduct?.id?.ifBlank { initialProduct.id_producto }
+                        ?: System.currentTimeMillis().toString(),
+                    nombre = nombre.trim(),
                     categoria = categoria,
-                    tipo = tipo,
-                    precio = precio.toDouble(),
-                    disponible = true,
-                    stock = stock.toInt()
+                    tipo = tipo.trim(),
+                    precio = parsedPrecio ?: 0.0,
+                    disponible = if (isEditing) (initialProduct!!.disponible && stockVal > 0) else stockVal > 0,
+                    stock = stockVal
                 )
-                onSave(newProd)
+                onSave(prodResult)
             },
             enabled = isFormValid,
             modifier = Modifier.fillMaxWidth(),
             colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
         ) {
-            Text("Guardar Producto")
+            Text(
+                text = if (isEditing) "Actualizar Producto" else "Guardar Producto",
+                color = Color.White,
+                fontWeight = FontWeight.Bold
+            )
         }
     }
 }
