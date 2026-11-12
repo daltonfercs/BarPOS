@@ -140,11 +140,35 @@ object BarRepository {
         val raw = fechaHora.trim()
         if (raw.isBlank()) return null
 
+        // Intentar primero formatos ISO 8601 (ej. devueltos por Google Sheets en UTC: 2026-11-12T01:30:00.000Z)
+        if (raw.contains("T")) {
+            val isoPatterns = listOf(
+                "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'",
+                "yyyy-MM-dd'T'HH:mm:ss'Z'",
+                "yyyy-MM-dd'T'HH:mm:ss.SSS",
+                "yyyy-MM-dd'T'HH:mm:ss"
+            )
+            for (pattern in isoPatterns) {
+                try {
+                    val sdf = SimpleDateFormat(pattern, Locale.US).apply {
+                        if (pattern.endsWith("'Z'")) {
+                            timeZone = TimeZone.getTimeZone("UTC")
+                        }
+                    }
+                    val date = sdf.parse(raw)
+                    if (date != null) return date.time
+                } catch (_: Exception) {
+                }
+            }
+        }
+
         val patterns = listOf(
             "yyyy-MM-dd HH:mm:ss" to Locale.getDefault(),
             "dd/MM/yyyy HH:mm:ss" to Locale.getDefault(),
             "yyyy-MM-dd HH:mm" to Locale.getDefault(),
-            "dd/MM/yyyy HH:mm" to Locale.getDefault()
+            "dd/MM/yyyy HH:mm" to Locale.getDefault(),
+            "yyyy-MM-dd" to Locale.getDefault(),
+            "dd/MM/yyyy" to Locale.getDefault()
         )
         for ((pattern, locale) in patterns) {
             try {
@@ -155,23 +179,34 @@ object BarRepository {
             }
         }
 
-        // Intentar formatos ISO 8601 (ej. devueltos por Google Sheets en UTC)
-        val isoPatterns = listOf(
-            "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'",
-            "yyyy-MM-dd'T'HH:mm:ss'Z'"
-        )
-        for (pattern in isoPatterns) {
-            try {
-                val sdf = SimpleDateFormat(pattern, Locale.US).apply {
-                    timeZone = TimeZone.getTimeZone("UTC")
-                }
-                val date = sdf.parse(raw)
-                if (date != null) return date.time
-            } catch (_: Exception) {
+        return null
+    }
+
+    /**
+     * Normaliza cualquier cadena de fecha/hora (incluyendo timestamps ISO UTC de Google Sheets)
+     * al formato local del dispositivo "yyyy-MM-dd HH:mm:ss" para que cada venta quede registrada
+     * exactamente en la fecha local en que se realizó.
+     */
+    fun normalizeFechaHoraToLocal(fechaHora: String): String {
+        val raw = fechaHora.trim()
+        if (raw.isBlank()) return ""
+        val millis = parseFechaHoraToMillis(raw)
+        if (millis != null) {
+            return synchronized(dateFormat) {
+                dateFormat.format(Date(millis))
             }
         }
+        return raw
+    }
 
-        return null
+    /**
+     * Verifica si la fecha/hora de un pedido corresponde exactamente al día local indicado (yyyy-MM-dd).
+     */
+    fun matchesLocalDate(fechaHora: String, targetDateStr: String): Boolean {
+        val target = targetDateStr.trim()
+        if (target.isBlank()) return false
+        val normalized = normalizeFechaHoraToLocal(fechaHora)
+        return normalized.length >= 10 && normalized.substring(0, 10) == target
     }
 
     private val _tables = MutableStateFlow<List<TableModel>>(
@@ -242,7 +277,10 @@ object BarRepository {
                             orderStartTimes.putIfAbsent(entity.idPedido, entity.startTimeMillis)
                         }
                     }
-                    _orders.value = savedPedidos.map { it.toDomain() }
+                    _orders.value = savedPedidos.map { entity ->
+                        val domain = entity.toDomain()
+                        domain.copy(fechaHora = normalizeFechaHoraToLocal(domain.fechaHora))
+                    }
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Error cargando datos iniciales de Room: ${e.message}", e)
@@ -292,7 +330,7 @@ object BarRepository {
         }
     }
 
-    fun getTodayString(): String = dayFormat.format(Date())
+    fun getTodayString(): String = synchronized(dayFormat) { dayFormat.format(Date()) }
 
     suspend fun syncTables() = withContext(Dispatchers.IO) {
         try {
@@ -376,7 +414,9 @@ object BarRepository {
                     val localMap = _orders.value.associateBy { "${it.idPedido}_${it.producto}" }
                     val mergedRemote = remoteOrders.map { remote ->
                         val local = localMap["${remote.idPedido}_${remote.producto}"]
-                        val effectiveFechaHora = local?.fechaHora?.takeIf { it.isNotBlank() } ?: remote.fechaHora
+                        val normalizedRemoteFecha = normalizeFechaHoraToLocal(remote.fechaHora)
+                        val effectiveFechaHora = local?.fechaHora?.takeIf { it.isNotBlank() }?.let { normalizeFechaHoraToLocal(it) }
+                            ?: normalizedRemoteFecha
                         if (remote.idPedido.isNotBlank()) {
                             getOrderStartTimeMillis(remote.idPedido, effectiveFechaHora)
                         }
@@ -390,7 +430,7 @@ object BarRepository {
                                 estadoCocina = if (local.estadoCocina == "Listo") "Listo" else remote.estadoCocina
                             )
                         } else {
-                            remote
+                            remote.copy(fechaHora = effectiveFechaHora)
                         }
                     }
                     val remoteKeys = mergedRemote.map { "${it.idPedido}_${it.producto}" }.toSet()
@@ -419,7 +459,9 @@ object BarRepository {
                     val localMap = _orders.value.associateBy { "${it.idPedido}_${it.producto}" }
                     val mergedRemote = remoteOrders.map { remote ->
                         val local = localMap["${remote.idPedido}_${remote.producto}"]
-                        val effectiveFechaHora = local?.fechaHora?.takeIf { it.isNotBlank() } ?: remote.fechaHora
+                        val normalizedRemoteFecha = normalizeFechaHoraToLocal(remote.fechaHora)
+                        val effectiveFechaHora = local?.fechaHora?.takeIf { it.isNotBlank() }?.let { normalizeFechaHoraToLocal(it) }
+                            ?: normalizedRemoteFecha
                         if (remote.idPedido.isNotBlank()) {
                             getOrderStartTimeMillis(remote.idPedido, effectiveFechaHora)
                         }
@@ -432,7 +474,7 @@ object BarRepository {
                                 montoYape = if (local.estadoPago == "Pagado") local.montoYape else remote.montoYape,
                                 estadoCocina = if (local.estadoCocina == "Listo") "Listo" else remote.estadoCocina
                             )
-                        } else remote
+                        } else remote.copy(fechaHora = effectiveFechaHora)
                     }
                     val remoteKeys = mergedRemote.map { "${it.idPedido}_${it.producto}" }.toSet()
                     val onlyLocal = _orders.value.filter { "${it.idPedido}_${it.producto}" !in remoteKeys }
@@ -716,17 +758,27 @@ object BarRepository {
     }
 
     /**
-     * Obtiene los registros para una fecha específica (formato YYYY-MM-DD).
+     * Obtiene los registros únicamente para una fecha específica (formato YYYY-MM-DD).
+     * Cada día lleva su propio registro independiente y al cambiar de fecha empieza en 0.
      */
     suspend fun getOrdersForDate(dateStr: String): List<PedidoItem> = withContext(Dispatchers.IO) {
-        val localForDate = _orders.value.filter { it.fechaHora.startsWith(dateStr) }
+        val localForDate = _orders.value.filter { matchesLocalDate(it.fechaHora, dateStr) }
         try {
             val response = NetworkModule.apiService.obtenerVentasPorFecha(dateStr)
             if (response.isSuccessful) {
                 val remote = response.body()?.data
                 if (!remote.isNullOrEmpty()) {
                     val localMap = localForDate.associateBy { "${it.idPedido}_${it.producto}" }
-                    val mergedRemote = remote.map { rem ->
+                    val remoteForDate = remote
+                        .map { rem ->
+                            val normFecha = normalizeFechaHoraToLocal(rem.fechaHora)
+                            rem.copy(fechaHora = normFecha)
+                        }
+                        .filter { rem ->
+                            matchesLocalDate(rem.fechaHora, dateStr)
+                        }
+
+                    val mergedRemote = remoteForDate.map { rem ->
                         val loc = localMap["${rem.idPedido}_${rem.producto}"]
                         if (loc != null && loc.estadoPago == "Pagado") {
                             rem.copy(

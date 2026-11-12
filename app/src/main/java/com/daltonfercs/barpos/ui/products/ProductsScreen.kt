@@ -3,8 +3,10 @@ package com.daltonfercs.barpos.ui.products
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
@@ -415,9 +417,12 @@ fun AddProductForm(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(24.dp)
-            .padding(bottom = 32.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
+            .verticalScroll(rememberScrollState())
+            .imePadding()
+            .navigationBarsPadding()
+            .padding(horizontal = 24.dp, vertical = 16.dp)
+            .padding(bottom = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         Text(
             text = if (isEditing) "Editar Producto" else "Nuevo Producto",
@@ -429,13 +434,14 @@ fun AddProductForm(
             value = nombre,
             onValueChange = { nombre = it },
             label = { Text("Nombre del Producto") },
+            singleLine = true,
             modifier = Modifier.fillMaxWidth(),
             isError = nombre.isBlank()
         )
 
         Column(
             modifier = Modifier.fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(6.dp)
+            verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
             Text(
                 text = "Categoría:",
@@ -474,15 +480,17 @@ fun AddProductForm(
             value = tipo,
             onValueChange = { tipo = it },
             label = { Text("Tipo (ej. Trago, Fondo)") },
+            singleLine = true,
             modifier = Modifier.fillMaxWidth()
         )
 
-        Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             OutlinedTextField(
                 value = precio,
                 onValueChange = { precio = it },
                 label = { Text("Precio (S/)") },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                singleLine = true,
                 modifier = Modifier.weight(1f),
                 isError = precio.isNotEmpty() && parsedPrecio == null
             )
@@ -491,12 +499,13 @@ fun AddProductForm(
                 onValueChange = { stock = it },
                 label = { Text("Stock") },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                singleLine = true,
                 modifier = Modifier.weight(1f),
                 isError = stock.isNotEmpty() && parsedStock == null
             )
         }
 
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(8.dp))
 
         Button(
             onClick = {
@@ -508,7 +517,7 @@ fun AddProductForm(
                     categoria = categoria,
                     tipo = tipo.trim(),
                     precio = parsedPrecio ?: 0.0,
-                    disponible = if (isEditing) (initialProduct!!.disponible && stockVal > 0) else stockVal > 0,
+                    disponible = if (isEditing) (initialProduct.disponible && stockVal > 0) else stockVal > 0,
                     stock = stockVal
                 )
                 onSave(prodResult)

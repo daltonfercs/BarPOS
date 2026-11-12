@@ -4,10 +4,10 @@
     <selectionStates>
       <SelectionState runConfigName="app">
         <option name="selectionMode" value="DROPDOWN" />
-        <DropdownSelection timestamp="2026-11-10T21:52:50.956377407Z">
+        <DropdownSelection timestamp="2026-11-10T22:28:40.553732241Z">
           <Target type="DEFAULT_BOOT">
             <handle>
-              <DeviceId pluginId="PhysicalDevice" identifier="serial=R5GL33F1MZJ" />
+              <DeviceId pluginId="LocalEmulator" identifier="path=/home/dalton/.android/avd/Pixel_6a.avd" />
             </handle>
           </Target>
         </DropdownSelection>

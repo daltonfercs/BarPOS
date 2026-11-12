@@ -64,70 +64,98 @@ data class ReportsUiState(
 
 class ReportsViewModel : ViewModel() {
     private val dayFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+    private var lastKnownToday: String = BarRepository.getTodayString()
 
-    private val _uiState = MutableStateFlow(ReportsUiState(selectedDate = BarRepository.getTodayString()))
+    private val _uiState = MutableStateFlow(ReportsUiState(selectedDate = lastKnownToday))
     val uiState: StateFlow<ReportsUiState> = _uiState.asStateFlow()
 
     init {
         cargarReporte(_uiState.value.selectedDate)
+        viewModelScope.launch {
+            BarRepository.orders.collect {
+                val hoyActual = BarRepository.getTodayString()
+                if (hoyActual != lastKnownToday) {
+                    lastKnownToday = hoyActual
+                    cargarReporte(hoyActual)
+                } else {
+                    recalcularDesdeLista(
+                        fecha = _uiState.value.selectedDate,
+                        pedidos = it.filter { item -> BarRepository.matchesLocalDate(item.fechaHora, _uiState.value.selectedDate) }
+                    )
+                }
+            }
+        }
+    }
+
+    fun verificarCambioDeDia() {
+        val hoyActual = BarRepository.getTodayString()
+        if (hoyActual != lastKnownToday) {
+            lastKnownToday = hoyActual
+            cargarReporte(hoyActual)
+        } else {
+            cargarReporte(_uiState.value.selectedDate)
+        }
+    }
+
+    private fun recalcularDesdeLista(fecha: String, pedidos: List<PedidoItem>) {
+        val pagados = pedidos.filter { it.estadoPago == "Pagado" }
+        val pendientes = pedidos.filter { it.estadoPago == "Pendiente" }
+
+        val totalRecaudado = pagados.sumOf { it.totalItem }
+
+        // Sumar correctamente Yape y Efectivo incluyendo los cobros en modo "Mixto"
+        val totalYape = pagados.sumOf { item ->
+            when {
+                item.metodoPago.equals("Yape", ignoreCase = true) -> item.totalItem
+                item.metodoPago.contains("Mixto", ignoreCase = true) -> {
+                    if (item.montoYape > 0.0 || item.montoEfectivo > 0.0) item.montoYape else item.totalItem / 2.0
+                }
+                else -> 0.0
+            }
+        }
+
+        val totalEfectivo = pagados.sumOf { item ->
+            when {
+                item.metodoPago.equals("Efectivo", ignoreCase = true) -> item.totalItem
+                item.metodoPago.contains("Mixto", ignoreCase = true) -> {
+                    if (item.montoEfectivo > 0.0 || item.montoYape > 0.0) item.montoEfectivo else item.totalItem / 2.0
+                }
+                else -> 0.0
+            }
+        }
+
+        val comidas = pagados.filter {
+            it.categoria.contains("Comida", ignoreCase = true) || it.categoria.contains("Snack", ignoreCase = true)
+        }
+        val totalComida = comidas.sumOf { it.totalItem }
+        val cantidadComida = comidas.sumOf { it.cantidad }
+
+        val bebidas = pagados.filter { it.categoria.contains("Bebida", ignoreCase = true) }
+        val totalBebida = bebidas.sumOf { it.totalItem }
+        val cantidadBebida = bebidas.sumOf { it.cantidad }
+
+        val totalPendiente = pendientes.sumOf { it.totalItem }
+
+        _uiState.value = ReportsUiState(
+            selectedDate = fecha,
+            isLoading = false,
+            totalRecaudado = totalRecaudado,
+            totalYape = totalYape,
+            totalEfectivo = totalEfectivo,
+            totalComida = totalComida,
+            cantidadComida = cantidadComida,
+            totalBebida = totalBebida,
+            cantidadBebida = cantidadBebida,
+            totalPendiente = totalPendiente,
+            ordenes = pedidos
+        )
     }
 
     fun cargarReporte(fecha: String) {
         _uiState.value = _uiState.value.copy(selectedDate = fecha, isLoading = true)
         viewModelScope.launch(Dispatchers.IO) {
             val pedidos = BarRepository.getOrdersForDate(fecha)
-
-            val pagados = pedidos.filter { it.estadoPago == "Pagado" }
-            val pendientes = pedidos.filter { it.estadoPago == "Pendiente" }
-
-            val totalRecaudado = pagados.sumOf { it.totalItem }
-
-            // Sumar correctamente Yape y Efectivo incluyendo los cobros en modo "Mixto"
-            val totalYape = pagados.sumOf { item ->
-                when {
-                    item.metodoPago.equals("Yape", ignoreCase = true) -> item.totalItem
-                    item.metodoPago.contains("Mixto", ignoreCase = true) -> {
-                        if (item.montoYape > 0.0 || item.montoEfectivo > 0.0) item.montoYape else item.totalItem / 2.0
-                    }
-                    else -> 0.0
-                }
-            }
-
-            val totalEfectivo = pagados.sumOf { item ->
-                when {
-                    item.metodoPago.equals("Efectivo", ignoreCase = true) -> item.totalItem
-                    item.metodoPago.contains("Mixto", ignoreCase = true) -> {
-                        if (item.montoEfectivo > 0.0 || item.montoYape > 0.0) item.montoEfectivo else item.totalItem / 2.0
-                    }
-                    else -> 0.0
-                }
-            }
-
-            val comidas = pagados.filter {
-                it.categoria.contains("Comida", ignoreCase = true) || it.categoria.contains("Snack", ignoreCase = true)
-            }
-            val totalComida = comidas.sumOf { it.totalItem }
-            val cantidadComida = comidas.sumOf { it.cantidad }
-
-            val bebidas = pagados.filter { it.categoria.contains("Bebida", ignoreCase = true) }
-            val totalBebida = bebidas.sumOf { it.totalItem }
-            val cantidadBebida = bebidas.sumOf { it.cantidad }
-
-            val totalPendiente = pendientes.sumOf { it.totalItem }
-
-            _uiState.value = ReportsUiState(
-                selectedDate = fecha,
-                isLoading = false,
-                totalRecaudado = totalRecaudado,
-                totalYape = totalYape,
-                totalEfectivo = totalEfectivo,
-                totalComida = totalComida,
-                cantidadComida = cantidadComida,
-                totalBebida = totalBebida,
-                cantidadBebida = cantidadBebida,
-                totalPendiente = totalPendiente,
-                ordenes = pedidos
-            )
+            recalcularDesdeLista(fecha, pedidos)
         }
     }
 
@@ -163,6 +191,10 @@ fun ReportsScreen(viewModel: ReportsViewModel = androidx.lifecycle.viewmodel.com
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
+
+    LaunchedEffect(Unit) {
+        viewModel.verificarCambioDeDia()
+    }
 
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
